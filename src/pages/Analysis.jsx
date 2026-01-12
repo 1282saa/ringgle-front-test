@@ -171,7 +171,7 @@ function Analysis() {
                     <p>{item.explanation}</p>
                   </div>
 
-                  <button className="practice-btn">
+                  <button className="practice-btn" onClick={() => navigate('/practice')}>
                     이 문장 연습하기
                     <ChevronRight size={16} />
                   </button>

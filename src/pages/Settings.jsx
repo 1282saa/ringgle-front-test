@@ -1,50 +1,61 @@
+/**
+ * @file pages/Settings.jsx
+ * @description AI 튜터 설정 페이지
+ *
+ * 사용자가 AI 튜터의 다양한 옵션을 설정할 수 있는 화면입니다.
+ *
+ * 설정 가능 항목:
+ * - 억양 (미국, 영국, 호주, 인도)
+ * - 성별 (남성, 여성)
+ * - 말하기 속도 (느리게, 보통, 빠르게)
+ * - 난이도 (초급, 중급, 고급)
+ * - 대화 주제 (비즈니스, 일상 대화, 여행, 면접)
+ *
+ * @route /settings
+ */
+
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Check } from 'lucide-react'
 
-const ACCENTS = [
-  { id: 'us', label: '미국', icon: '🇺🇸', sublabel: 'American' },
-  { id: 'uk', label: '영국', icon: '🇬🇧', sublabel: 'British' },
-  { id: 'au', label: '호주', icon: '🇦🇺', sublabel: 'Australian' },
-  { id: 'in', label: '인도', icon: '🇮🇳', sublabel: 'Indian' },
-]
+// 상수 및 유틸리티 import
+import {
+  ACCENTS,
+  GENDERS,
+  SPEEDS,
+  LEVELS,
+  TOPICS,
+  DEFAULT_SETTINGS,
+} from '../constants'
+import { getTutorSettings, saveTutorSettings } from '../utils/helpers'
 
-const GENDERS = [
-  { id: 'female', label: '여성', icon: '👩' },
-  { id: 'male', label: '남성', icon: '👨' },
-]
-
-const SPEEDS = [
-  { id: 'slow', label: '느리게', sublabel: '0.8x' },
-  { id: 'normal', label: '보통', sublabel: '1.0x' },
-  { id: 'fast', label: '빠르게', sublabel: '1.2x' },
-]
-
-const LEVELS = [
-  { id: 'beginner', label: '초급', sublabel: 'Beginner' },
-  { id: 'intermediate', label: '중급', sublabel: 'Intermediate' },
-  { id: 'advanced', label: '고급', sublabel: 'Advanced' },
-]
-
-const TOPICS = [
-  { id: 'business', label: '비즈니스', icon: '💼' },
-  { id: 'daily', label: '일상 대화', icon: '💬' },
-  { id: 'travel', label: '여행', icon: '✈️' },
-  { id: 'interview', label: '면접', icon: '🎯' },
-]
-
+/**
+ * 설정 페이지 컴포넌트
+ *
+ * @returns {JSX.Element} 설정 페이지
+ */
 function Settings() {
   const navigate = useNavigate()
 
-  const [accent, setAccent] = useState('us')
-  const [gender, setGender] = useState('female')
-  const [speed, setSpeed] = useState('normal')
-  const [level, setLevel] = useState('intermediate')
-  const [topic, setTopic] = useState('business')
+  // ============================================
+  // State 정의
+  // ============================================
 
-  // 저장된 설정 로드
+  const [accent, setAccent] = useState(DEFAULT_SETTINGS.accent)
+  const [gender, setGender] = useState(DEFAULT_SETTINGS.gender)
+  const [speed, setSpeed] = useState(DEFAULT_SETTINGS.speed)
+  const [level, setLevel] = useState(DEFAULT_SETTINGS.level)
+  const [topic, setTopic] = useState(DEFAULT_SETTINGS.topic)
+
+  // ============================================
+  // Effects
+  // ============================================
+
+  /**
+   * 컴포넌트 마운트 시 저장된 설정 로드
+   */
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem('tutorSettings') || '{}')
+    const saved = getTutorSettings()
     if (saved.accent) setAccent(saved.accent)
     if (saved.gender) setGender(saved.gender)
     if (saved.speed) setSpeed(saved.speed)
@@ -52,119 +63,163 @@ function Settings() {
     if (saved.topic) setTopic(saved.topic)
   }, [])
 
+  // ============================================
+  // Event Handlers
+  // ============================================
+
+  /**
+   * 설정 저장 후 홈으로 이동
+   */
   const handleSave = () => {
     const settings = { accent, gender, speed, level, topic }
-    localStorage.setItem('tutorSettings', JSON.stringify(settings))
+    saveTutorSettings(settings)
     navigate('/')
   }
 
+  // ============================================
+  // Render
+  // ============================================
+
   return (
     <>
-      {/* Header */}
+      {/* 헤더 - 뒤로가기 / 타이틀 / 저장 버튼 */}
       <header className="header">
         <div className="header-content">
-          <button onClick={() => navigate(-1)} style={{ background: 'none', padding: 0 }}>
+          <button
+            onClick={() => navigate(-1)}
+            style={{ background: 'none', padding: 0 }}
+            aria-label="뒤로 가기"
+          >
             <ArrowLeft size={24} color="#374151" />
           </button>
           <span style={{ fontWeight: 600 }}>AI 튜터 설정</span>
-          <button onClick={handleSave} style={{ background: 'none', padding: 0 }}>
+          <button
+            onClick={handleSave}
+            style={{ background: 'none', padding: 0 }}
+            aria-label="설정 저장"
+          >
             <Check size={24} color="#6366f1" />
           </button>
         </div>
       </header>
 
       <div className="page">
-        {/* Accent */}
-        <div className="option-group">
-          <label className="option-label">억양 선택</label>
-          <div className="option-grid">
-            {ACCENTS.map(item => (
-              <div
-                key={item.id}
-                className={`option-item ${accent === item.id ? 'selected' : ''}`}
-                onClick={() => setAccent(item.id)}
-              >
-                <div className="icon">{item.icon}</div>
-                <div className="label">{item.label}</div>
-                <div className="sublabel">{item.sublabel}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* 억양 선택 섹션 */}
+        <OptionGroup
+          label="억양 선택"
+          options={ACCENTS}
+          value={accent}
+          onChange={setAccent}
+          showIcon
+          showSublabel
+        />
 
-        {/* Gender */}
-        <div className="option-group">
-          <label className="option-label">성별</label>
-          <div className="option-grid">
-            {GENDERS.map(item => (
-              <div
-                key={item.id}
-                className={`option-item ${gender === item.id ? 'selected' : ''}`}
-                onClick={() => setGender(item.id)}
-              >
-                <div className="icon">{item.icon}</div>
-                <div className="label">{item.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* 성별 선택 섹션 */}
+        <OptionGroup
+          label="성별"
+          options={GENDERS}
+          value={gender}
+          onChange={setGender}
+          showIcon
+        />
 
-        {/* Speed */}
-        <div className="option-group">
-          <label className="option-label">말하기 속도</label>
-          <div className="option-grid cols-3">
-            {SPEEDS.map(item => (
-              <div
-                key={item.id}
-                className={`option-item ${speed === item.id ? 'selected' : ''}`}
-                onClick={() => setSpeed(item.id)}
-              >
-                <div className="label">{item.label}</div>
-                <div className="sublabel">{item.sublabel}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* 말하기 속도 섹션 */}
+        <OptionGroup
+          label="말하기 속도"
+          options={SPEEDS}
+          value={speed}
+          onChange={setSpeed}
+          showSublabel
+          columns={3}
+        />
 
-        {/* Level */}
-        <div className="option-group">
-          <label className="option-label">난이도</label>
-          <div className="option-grid cols-3">
-            {LEVELS.map(item => (
-              <div
-                key={item.id}
-                className={`option-item ${level === item.id ? 'selected' : ''}`}
-                onClick={() => setLevel(item.id)}
-              >
-                <div className="label">{item.label}</div>
-                <div className="sublabel">{item.sublabel}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* 난이도 섹션 */}
+        <OptionGroup
+          label="난이도"
+          options={LEVELS}
+          value={level}
+          onChange={setLevel}
+          showSublabel
+          columns={3}
+        />
 
-        {/* Topic */}
-        <div className="option-group">
-          <label className="option-label">대화 주제</label>
-          <div className="option-grid">
-            {TOPICS.map(item => (
-              <div
-                key={item.id}
-                className={`option-item ${topic === item.id ? 'selected' : ''}`}
-                onClick={() => setTopic(item.id)}
-              >
-                <div className="icon">{item.icon}</div>
-                <div className="label">{item.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* 대화 주제 섹션 */}
+        <OptionGroup
+          label="대화 주제"
+          options={TOPICS}
+          value={topic}
+          onChange={setTopic}
+          showIcon
+        />
 
-        <button className="btn btn-primary btn-full btn-lg" onClick={handleSave}>
+        {/* 저장 버튼 */}
+        <button
+          className="btn btn-primary btn-full btn-lg"
+          onClick={handleSave}
+        >
           저장하기
         </button>
       </div>
     </>
+  )
+}
+
+// ============================================
+// 서브 컴포넌트
+// ============================================
+
+/**
+ * 옵션 그룹 컴포넌트
+ * 설정 항목의 선택 UI를 렌더링
+ *
+ * @param {Object} props - 컴포넌트 props
+ * @param {string} props.label - 그룹 라벨
+ * @param {Array} props.options - 선택 옵션 배열
+ * @param {string} props.value - 현재 선택된 값
+ * @param {Function} props.onChange - 값 변경 핸들러
+ * @param {boolean} [props.showIcon=false] - 아이콘 표시 여부
+ * @param {boolean} [props.showSublabel=false] - 서브라벨 표시 여부
+ * @param {number} [props.columns] - 그리드 컬럼 수
+ */
+function OptionGroup({
+  label,
+  options,
+  value,
+  onChange,
+  showIcon = false,
+  showSublabel = false,
+  columns,
+}) {
+  // 그리드 클래스 결정
+  const gridClass = columns ? `option-grid cols-${columns}` : 'option-grid'
+
+  return (
+    <div className="option-group">
+      <label className="option-label">{label}</label>
+      <div className={gridClass}>
+        {options.map((item) => (
+          <div
+            key={item.id}
+            className={`option-item ${value === item.id ? 'selected' : ''}`}
+            onClick={() => onChange(item.id)}
+            role="button"
+            tabIndex={0}
+            onKeyPress={(e) => e.key === 'Enter' && onChange(item.id)}
+          >
+            {/* 아이콘 (있는 경우) */}
+            {showIcon && item.icon && (
+              <div className="icon">{item.icon}</div>
+            )}
+            {/* 메인 라벨 */}
+            <div className="label">{item.label}</div>
+            {/* 서브 라벨 (있는 경우) */}
+            {showSublabel && item.sublabel && (
+              <div className="sublabel">{item.sublabel}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 

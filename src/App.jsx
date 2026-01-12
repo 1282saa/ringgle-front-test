@@ -4,6 +4,7 @@ import Settings from './pages/Settings'
 import Call from './pages/Call'
 import Result from './pages/Result'
 import Analysis from './pages/Analysis'
+import Practice from './pages/Practice'
 import './App.css'
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
         <Route path="/call" element={<Call />} />
         <Route path="/result" element={<Result />} />
         <Route path="/analysis" element={<Analysis />} />
+        <Route path="/practice" element={<Practice />} />
       </Routes>
     </div>
   )
