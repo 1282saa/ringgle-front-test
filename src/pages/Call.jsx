@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, Settings, Volume2, Mic } from 'lucide-react'
+import { Mic, MicOff, Volume2, Captions } from 'lucide-react'
 import { sendMessage, textToSpeech, playAudioBase64 } from '../utils/api'
 
 function Call() {
@@ -9,28 +9,23 @@ function Call() {
   const [isListening, setIsListening] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isMuted, setIsMuted] = useState(false)
+  const [showSubtitles, setShowSubtitles] = useState(false)
   const [messages, setMessages] = useState([])
   const [transcript, setTranscript] = useState('')
+  const [currentSubtitle, setCurrentSubtitle] = useState('')
   const [turnCount, setTurnCount] = useState(0)
   const [wordCount, setWordCount] = useState(0)
-  const [showSubtitleModal, setShowSubtitleModal] = useState(false)
-  const [showTranslation, setShowTranslation] = useState({})
 
   const timerRef = useRef(null)
   const recognitionRef = useRef(null)
   const audioRef = useRef(null)
-  const messagesEndRef = useRef(null)
 
   // 설정 로드
   const settings = JSON.parse(localStorage.getItem('tutorSettings') || '{}')
-  const topic = settings.topic || 'daily'
-  const topicLabels = {
-    business: 'Business English',
-    daily: 'Daily Conversation',
-    travel: 'Travel English',
-    interview: 'Job Interview'
-  }
-  const topicLabel = topicLabels[topic] || 'Daily Conversation'
+  const gender = settings.gender || 'female'
+  const tutorName = gender === 'male' ? 'James' : 'Gwen'
+  const tutorInitial = tutorName[0]
 
   // 타이머
   useEffect(() => {
@@ -45,29 +40,34 @@ function Call() {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
       recognitionRef.current = new SpeechRecognition()
-      recognitionRef.current.continuous = false
+      recognitionRef.current.continuous = true
       recognitionRef.current.interimResults = true
       recognitionRef.current.lang = 'en-US'
 
       recognitionRef.current.onresult = (event) => {
-        const current = event.resultIndex
-        const result = event.results[current]
-        const text = result[0].transcript
+        let finalTranscript = ''
+        let interimTranscript = ''
 
-        setTranscript(text)
-
-        if (result.isFinal) {
-          handleUserSpeech(text)
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i]
+          if (result.isFinal) {
+            finalTranscript += result[0].transcript
+          } else {
+            interimTranscript += result[0].transcript
+          }
         }
+
+        if (finalTranscript) {
+          handleUserSpeech(finalTranscript)
+        }
+        setTranscript(interimTranscript || finalTranscript)
       }
 
       recognitionRef.current.onerror = (event) => {
         console.error('Speech recognition error:', event.error)
-        setIsListening(false)
-      }
-
-      recognitionRef.current.onend = () => {
-        setIsListening(false)
+        if (event.error !== 'no-speech') {
+          setIsListening(false)
+        }
       }
     }
 
@@ -83,11 +83,6 @@ function Call() {
     startConversation()
   }, [])
 
-  // 스크롤 자동 이동
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
   const startConversation = async () => {
     setIsLoading(true)
     try {
@@ -95,19 +90,16 @@ function Call() {
       const aiMessage = {
         role: 'assistant',
         content: response.message,
-        speaker: 'ai',
-        translation: '' // 번역은 나중에 추가 가능
+        speaker: 'ai'
       }
       setMessages([aiMessage])
+      setCurrentSubtitle(response.message)
       await speakText(response.message)
     } catch (err) {
       console.error('Start conversation error:', err)
-      const mockMessage = {
-        speaker: 'ai',
-        content: `Hello! Let's practice English together. How are you doing today?`,
-        translation: '안녕하세요! 함께 영어를 연습해봐요. 오늘 어떠세요?'
-      }
-      setMessages([mockMessage])
+      const mockMessage = "Hello! This is " + tutorName + ". How are you doing today?"
+      setMessages([{ speaker: 'ai', content: mockMessage }])
+      setCurrentSubtitle(mockMessage)
     } finally {
       setIsLoading(false)
     }
@@ -115,6 +107,7 @@ function Call() {
 
   const speakText = async (text) => {
     setIsSpeaking(true)
+    setCurrentSubtitle(text)
 
     try {
       const ttsResponse = await textToSpeech(text, settings)
@@ -146,7 +139,7 @@ function Call() {
   }
 
   const startListening = () => {
-    if (recognitionRef.current) {
+    if (recognitionRef.current && !isMuted) {
       setIsListening(true)
       setTranscript('')
       try {
@@ -164,11 +157,18 @@ function Call() {
     }
   }
 
+  const toggleMute = () => {
+    if (isMuted) {
+      setIsMuted(false)
+      startListening()
+    } else {
+      setIsMuted(true)
+      stopListening()
+    }
+  }
+
   const handleUserSpeech = async (text) => {
     if (!text.trim()) return
-
-    setIsListening(false)
-    setIsLoading(true)
 
     const newTurnCount = turnCount + 1
     const newWordCount = wordCount + text.split(' ').length
@@ -185,6 +185,11 @@ function Call() {
     setMessages(updatedMessages)
     setTurnCount(newTurnCount)
     setWordCount(newWordCount)
+    setCurrentSubtitle(text)
+
+    // 잠시 멈추고 AI 응답
+    stopListening()
+    setIsLoading(true)
 
     try {
       const apiMessages = updatedMessages.map(m => ({
@@ -197,8 +202,7 @@ function Call() {
       const aiMessage = {
         role: 'assistant',
         content: response.message,
-        speaker: 'ai',
-        translation: ''
+        speaker: 'ai'
       }
 
       setMessages(prev => [...prev, aiMessage])
@@ -237,7 +241,7 @@ function Call() {
       date: new Date().toISOString(),
       turnCount,
       wordCount,
-      topic: topicLabel
+      tutorName
     }
     localStorage.setItem('lastCallResult', JSON.stringify(result))
 
@@ -245,416 +249,209 @@ function Call() {
     const history = JSON.parse(localStorage.getItem('callHistory') || '[]')
     history.unshift({
       date: new Date().toLocaleDateString('ko-KR'),
+      fullDate: new Date().toLocaleString('ko-KR'),
       duration: formatTime(callTime),
       words: wordCount,
-      topic: topicLabel
+      tutorName
     })
     localStorage.setItem('callHistory', JSON.stringify(history.slice(0, 10)))
 
     navigate('/result')
   }
 
-  const toggleTranslation = (index) => {
-    setShowTranslation(prev => ({
-      ...prev,
-      [index]: !prev[index]
-    }))
-  }
-
   return (
     <div className="ringle-call">
-      {/* Header - 링글 스타일 */}
-      <header className="call-header">
-        <button className="back-btn" onClick={handleEndCall}>
-          <ChevronLeft size={24} color="#1f2937" />
-        </button>
-        <h1 className="topic-title">{topicLabel}</h1>
-        <button className="settings-btn" onClick={() => setShowSubtitleModal(true)}>
-          <Settings size={20} color="#6b7280" />
-        </button>
-      </header>
-
-      {/* Messages Section - 링글 스타일 */}
-      <div className="messages-section">
-        {messages.map((msg, index) => {
-          const isUser = msg.speaker === 'user' || msg.role === 'user'
-          return (
-            <div key={index} className={`message-wrapper ${isUser ? 'user' : 'ai'}`}>
-              <div className={`message-bubble ${isUser ? 'user' : 'ai'}`}>
-                <p className="message-text">{msg.content}</p>
-
-                {/* AI 메시지 하단 */}
-                {!isUser && (
-                  <div className="message-footer ai-footer">
-                    <button
-                      className="translate-btn"
-                      onClick={() => toggleTranslation(index)}
-                    >
-                      {showTranslation[index] ? '번역 숨기기' : '번역 보기'}
-                    </button>
-                    <button className="speak-btn">
-                      <Volume2 size={18} color="#6b7280" />
-                    </button>
-                  </div>
-                )}
-
-                {/* 번역 표시 */}
-                {!isUser && showTranslation[index] && msg.translation && (
-                  <p className="translation-text">{msg.translation}</p>
-                )}
-
-                {/* 사용자 메시지 하단 */}
-                {isUser && (
-                  <div className="message-footer user-footer">
-                    <button className="speak-btn">
-                      <Volume2 size={18} color="rgba(255,255,255,0.7)" />
-                    </button>
-                    <button className="correction-btn">
-                      <span className="sparkle">✨</span> 교정 받기
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* 턴/단어 카운트 - 사용자 메시지 아래 */}
-              {isUser && (
-                <div className="turn-info">
-                  {msg.turnNumber} 턴 — {msg.totalWords}단어
-                </div>
-              )}
-            </div>
-          )
-        })}
-
-        {/* Current Transcript */}
-        {isListening && transcript && (
-          <div className="message-wrapper user">
-            <div className="message-bubble user typing">
-              <p className="message-text">{transcript}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Loading Indicator */}
-        {isLoading && (
-          <div className="typing-indicator">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Bottom - 마이크 버튼 */}
-      <div className="call-bottom">
-        <div className="status-text">
-          {isSpeaking && 'AI가 말하는 중...'}
-          {isListening && '듣고 있어요...'}
-          {isLoading && 'AI가 생각하는 중...'}
-          {!isSpeaking && !isListening && !isLoading && '마이크를 눌러 말하세요'}
+      {/* Main Call Area */}
+      <div className="call-main">
+        {/* Tutor Avatar */}
+        <div className="tutor-avatar">
+          <span>{tutorInitial}</span>
         </div>
 
-        <button
-          className={`mic-btn ${isListening ? 'active' : ''}`}
-          onClick={isListening ? stopListening : startListening}
-          disabled={isSpeaking || isLoading}
-        >
-          <Mic size={32} color="white" />
-        </button>
+        {/* Tutor Name */}
+        <h1 className="tutor-name">{tutorName}</h1>
 
-        <button className="end-call-text" onClick={handleEndCall}>
-          통화 종료
-        </button>
+        {/* Call Timer */}
+        <div className="call-timer">{formatTime(callTime)}</div>
+
+        {/* Status Indicator */}
+        {isLoading && <div className="status-indicator">연결 중...</div>}
+        {isSpeaking && <div className="status-indicator speaking">AI가 말하는 중</div>}
+        {isListening && !isSpeaking && <div className="status-indicator listening">듣고 있어요</div>}
+
+        {/* Subtitle Area */}
+        {showSubtitles && currentSubtitle && (
+          <div className="subtitle-area">
+            <p>{currentSubtitle}</p>
+          </div>
+        )}
       </div>
 
-      {/* Subtitle Settings Modal */}
-      {showSubtitleModal && (
-        <div className="modal-overlay" onClick={() => setShowSubtitleModal(false)}>
-          <div className="subtitle-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header-row">
-              <h3>설정</h3>
-              <button onClick={() => setShowSubtitleModal(false)}>
-                <span style={{ fontSize: 24, color: '#9ca3af' }}>&times;</span>
-              </button>
-            </div>
-            <div className="modal-options">
-              <button className="modal-option">자막 설정</button>
-              <button className="modal-option">말하기 속도</button>
-              <button className="modal-option">음성 볼륨</button>
-            </div>
-          </div>
+      {/* Bottom Controls - 링글 스타일 */}
+      <div className="call-controls">
+        <div className="control-buttons">
+          <button
+            className={`control-btn ${isMuted ? 'active' : ''}`}
+            onClick={toggleMute}
+          >
+            {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
+            <span>소리끔</span>
+          </button>
+
+          <button className="control-btn">
+            <Volume2 size={24} />
+            <span>스피커</span>
+          </button>
+
+          <button
+            className={`control-btn ${showSubtitles ? 'active' : ''}`}
+            onClick={() => setShowSubtitles(!showSubtitles)}
+          >
+            <Captions size={24} />
+            <span>모두 보기</span>
+          </button>
         </div>
-      )}
+
+        {/* End Call Button */}
+        <button className="end-call-btn" onClick={handleEndCall}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
+            <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
+          </svg>
+        </button>
+      </div>
 
       <style>{`
         .ringle-call {
           min-height: 100vh;
-          background: white;
+          background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
           display: flex;
           flex-direction: column;
         }
 
-        /* Header */
-        .call-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 16px 20px;
-          border-bottom: 1px solid #e5e7eb;
-          background: white;
-        }
-
-        .back-btn, .settings-btn {
-          background: none;
-          padding: 4px;
-        }
-
-        .topic-title {
-          font-size: 17px;
-          font-weight: 600;
-          color: #1f2937;
-        }
-
-        /* Messages */
-        .messages-section {
+        .call-main {
           flex: 1;
-          overflow-y: auto;
-          padding: 20px;
           display: flex;
           flex-direction: column;
-          gap: 16px;
-          background: white;
-        }
-
-        .message-wrapper {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .message-wrapper.user {
-          align-items: flex-end;
-        }
-
-        .message-wrapper.ai {
-          align-items: flex-start;
-        }
-
-        .message-bubble {
-          max-width: 85%;
-          padding: 16px 20px;
-          border-radius: 16px;
-          animation: fadeIn 0.3s ease;
-        }
-
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        .message-bubble.ai {
-          background: #f3f4f6;
-          color: #1f2937;
-          border-bottom-left-radius: 4px;
-        }
-
-        .message-bubble.user {
-          background: #8b5cf6;
-          color: white;
-          border-bottom-right-radius: 4px;
-        }
-
-        .message-bubble.typing {
-          opacity: 0.8;
-        }
-
-        .message-text {
-          font-size: 16px;
-          line-height: 1.6;
-        }
-
-        .message-footer {
-          display: flex;
           align-items: center;
-          gap: 12px;
-          margin-top: 12px;
-          padding-top: 12px;
-          border-top: 1px solid rgba(0,0,0,0.05);
+          justify-content: center;
+          padding: 40px 20px;
+          position: relative;
         }
 
-        .user-footer {
-          border-top-color: rgba(255,255,255,0.2);
-        }
-
-        .translate-btn {
-          font-size: 14px;
-          color: #6b7280;
-          background: none;
-        }
-
-        .speak-btn {
-          background: none;
-          padding: 4px;
-        }
-
-        .correction-btn {
-          font-size: 14px;
-          color: rgba(255,255,255,0.9);
-          background: none;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          margin-left: auto;
-        }
-
-        .sparkle {
-          font-size: 14px;
-        }
-
-        .translation-text {
-          font-size: 14px;
-          color: #6b7280;
-          margin-top: 8px;
-          padding-top: 8px;
-          border-top: 1px solid #e5e7eb;
-        }
-
-        .turn-info {
-          font-size: 13px;
-          color: #6b7280;
-          margin-top: 8px;
-          text-align: right;
-        }
-
-        .typing-indicator {
-          display: flex;
-          gap: 4px;
-          padding: 16px 20px;
-          align-self: flex-start;
-        }
-
-        .typing-indicator span {
-          width: 8px;
-          height: 8px;
-          background: #9ca3af;
-          border-radius: 50%;
-          animation: bounce 1.4s infinite ease-in-out both;
-        }
-
-        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
-        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
-
-        @keyframes bounce {
-          0%, 80%, 100% { transform: scale(0); }
-          40% { transform: scale(1); }
-        }
-
-        /* Bottom */
-        .call-bottom {
-          padding: 20px;
-          text-align: center;
-          border-top: 1px solid #e5e7eb;
-          background: white;
-        }
-
-        .status-text {
-          font-size: 14px;
-          color: #6b7280;
-          margin-bottom: 16px;
-        }
-
-        .mic-btn {
-          width: 72px;
-          height: 72px;
-          border-radius: 50%;
+        .tutor-avatar {
+          width: 100px;
+          height: 100px;
           background: #8b5cf6;
+          border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          margin: 0 auto 16px;
-          box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+          margin-bottom: 20px;
         }
 
-        .mic-btn.active {
-          background: #5046e4;
+        .tutor-avatar span {
+          font-size: 40px;
+          font-weight: 600;
+          color: white;
+        }
+
+        .tutor-name {
+          font-size: 28px;
+          font-weight: 600;
+          color: white;
+          margin-bottom: 8px;
+        }
+
+        .call-timer {
+          font-size: 18px;
+          color: rgba(255, 255, 255, 0.6);
+          font-variant-numeric: tabular-nums;
+        }
+
+        .status-indicator {
+          margin-top: 40px;
+          padding: 8px 20px;
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 20px;
+          font-size: 14px;
+          color: rgba(255, 255, 255, 0.8);
+        }
+
+        .status-indicator.speaking {
+          background: rgba(139, 92, 246, 0.3);
+        }
+
+        .status-indicator.listening {
+          background: rgba(34, 197, 94, 0.3);
           animation: pulse 1.5s infinite;
         }
 
-        .mic-btn:disabled {
-          opacity: 0.5;
-        }
-
         @keyframes pulse {
-          0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
-          70% { box-shadow: 0 0 0 20px rgba(139, 92, 246, 0); }
-          100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
         }
 
-        .end-call-text {
-          font-size: 15px;
-          color: #ef4444;
-          background: none;
+        .subtitle-area {
+          position: absolute;
+          bottom: 200px;
+          left: 20px;
+          right: 20px;
+          background: rgba(0, 0, 0, 0.7);
+          border-radius: 12px;
+          padding: 16px 20px;
         }
 
-        /* Modal */
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0,0,0,0.5);
+        .subtitle-area p {
+          color: white;
+          font-size: 16px;
+          line-height: 1.5;
+          text-align: center;
+        }
+
+        /* Bottom Controls */
+        .call-controls {
+          padding: 20px;
+          padding-bottom: 40px;
+        }
+
+        .control-buttons {
           display: flex;
-          align-items: flex-end;
           justify-content: center;
-          z-index: 1000;
+          gap: 40px;
+          margin-bottom: 30px;
         }
 
-        .subtitle-modal {
-          background: white;
-          width: 100%;
-          max-width: 500px;
-          border-radius: 24px 24px 0 0;
-          padding: 24px;
-          animation: slideUp 0.3s ease;
-        }
-
-        @keyframes slideUp {
-          from { transform: translateY(100%); }
-          to { transform: translateY(0); }
-        }
-
-        .modal-header-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 16px;
-        }
-
-        .modal-header-row h3 {
-          font-size: 18px;
-          font-weight: 600;
-          color: #1f2937;
-        }
-
-        .modal-header-row button {
-          background: none;
-        }
-
-        .modal-options {
+        .control-btn {
           display: flex;
           flex-direction: column;
+          align-items: center;
           gap: 8px;
+          background: none;
+          color: rgba(255, 255, 255, 0.8);
         }
 
-        .modal-option {
-          padding: 16px;
-          text-align: left;
-          font-size: 16px;
-          color: #374151;
-          background: #f9fafb;
-          border-radius: 8px;
+        .control-btn.active {
+          color: #8b5cf6;
+        }
+
+        .control-btn span {
+          font-size: 12px;
+        }
+
+        .end-call-btn {
+          width: 72px;
+          height: 72px;
+          background: #ef4444;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto;
+          box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+        }
+
+        .end-call-btn:active {
+          transform: scale(0.95);
         }
       `}</style>
     </div>

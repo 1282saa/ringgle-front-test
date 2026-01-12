@@ -121,17 +121,46 @@ function Home() {
           <div className="history-section">
             {callHistory.length > 0 ? (
               callHistory.map((call, index) => (
-                <div
-                  key={index}
-                  className="history-item"
-                  onClick={() => navigate('/result')}
-                >
-                  <div className="history-date">{call.date}</div>
-                  <div className="history-info">
-                    <span>{call.duration}</span>
-                    <span>{call.words} 단어</span>
+                <div key={index} className="history-card">
+                  <div className="history-card-header">
+                    <div className="history-tutor-avatar">
+                      <span>{call.tutorName?.[0] || 'G'}</span>
+                    </div>
+                    <div className="history-card-info">
+                      <h3>{call.tutorName || 'Gwen'}</h3>
+                      <p>{call.fullDate || call.date}</p>
+                    </div>
                   </div>
-                  <ChevronRight size={20} color="#9ca3af" />
+                  <div className="history-stats">
+                    <div className="stat-item">
+                      <span className="stat-label">통화 시간</span>
+                      <span className="stat-value">{call.duration}</span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-label">발화 단어</span>
+                      <span className="stat-value">{call.words}개</span>
+                    </div>
+                  </div>
+                  <div className="history-buttons">
+                    <button
+                      className="history-btn"
+                      onClick={() => navigate('/result', { state: { tab: 'script' } })}
+                    >
+                      대화 스크립트 확인
+                    </button>
+                    <button
+                      className="history-btn"
+                      onClick={() => navigate('/analysis', { state: { callIndex: index } })}
+                    >
+                      AI 분석 확인
+                    </button>
+                    <button
+                      className="history-btn primary"
+                      onClick={() => navigate('/practice', { state: { callIndex: index } })}
+                    >
+                      핵심 표현 연습하기
+                    </button>
+                  </div>
                 </div>
               ))
             ) : (
@@ -315,41 +344,111 @@ function Home() {
           background: #4338ca;
         }
 
-        /* History Section */
+        /* History Section - 링글 스타일 카드 */
         .history-section {
-          background: white;
-          border-radius: 12px;
-          padding: 0 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
         }
 
-        .history-item {
+        .history-card {
+          background: white;
+          border: 1px solid #e5e7eb;
+          border-radius: 16px;
+          padding: 20px;
+        }
+
+        .history-card-header {
           display: flex;
           align-items: center;
-          padding: 16px 0;
-          border-bottom: 1px solid #f3f4f6;
-          cursor: pointer;
-        }
-
-        .history-item:last-child {
-          border-bottom: none;
-        }
-
-        .history-date {
-          flex: 1;
-          font-size: 15px;
-          color: #1f2937;
-          font-weight: 500;
-        }
-
-        .history-info {
-          display: flex;
           gap: 12px;
-          margin-right: 8px;
+          margin-bottom: 16px;
         }
 
-        .history-info span {
-          font-size: 14px;
+        .history-tutor-avatar {
+          width: 48px;
+          height: 48px;
+          background: #8b5cf6;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .history-tutor-avatar span {
+          font-size: 20px;
+          font-weight: 600;
+          color: white;
+        }
+
+        .history-card-info h3 {
+          font-size: 16px;
+          font-weight: 600;
+          color: #1f2937;
+          margin-bottom: 2px;
+        }
+
+        .history-card-info p {
+          font-size: 13px;
           color: #6b7280;
+        }
+
+        .history-stats {
+          display: flex;
+          gap: 24px;
+          padding: 12px 0;
+          border-top: 1px solid #f3f4f6;
+          border-bottom: 1px solid #f3f4f6;
+          margin-bottom: 16px;
+        }
+
+        .stat-item {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .stat-label {
+          font-size: 12px;
+          color: #9ca3af;
+        }
+
+        .stat-value {
+          font-size: 15px;
+          font-weight: 600;
+          color: #1f2937;
+        }
+
+        .history-buttons {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .history-btn {
+          width: 100%;
+          padding: 14px;
+          background: #f9fafb;
+          border: 1px solid #e5e7eb;
+          border-radius: 10px;
+          font-size: 14px;
+          font-weight: 500;
+          color: #374151;
+          text-align: center;
+        }
+
+        .history-btn:active {
+          background: #f3f4f6;
+        }
+
+        .history-btn.primary {
+          background: #5046e4;
+          border-color: #5046e4;
+          color: white;
+        }
+
+        .history-btn.primary:active {
+          background: #4338ca;
         }
 
         .empty-history {
