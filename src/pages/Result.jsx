@@ -12,7 +12,7 @@ function Result() {
   const [analysis, setAnalysis] = useState(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisRequested, setAnalysisRequested] = useState(false)
-  const [showFeedback, setShowFeedback] = useState(true)
+  const [showFeedback, setShowFeedback] = useState(false) // 피드백 모달은 나중에 표시
   const [rating, setRating] = useState(0)
   const [feedbackText, setFeedbackText] = useState('')
   const [showCorrections, setShowCorrections] = useState(false)
@@ -241,6 +241,14 @@ function Result() {
               </span>
             </div>
           )}
+
+          {/* 피드백 남기기 버튼 */}
+          <button
+            className="feedback-trigger-btn"
+            onClick={() => setShowFeedback(true)}
+          >
+            피드백 남기기
+          </button>
         </div>
       )}
 
@@ -248,6 +256,13 @@ function Result() {
       {showFeedback && (
         <div className="modal-overlay">
           <div className="feedback-modal">
+            <button
+              className="modal-close-btn"
+              onClick={() => setShowFeedback(false)}
+            >
+              <X size={24} />
+            </button>
+
             <div className="modal-header">
               <span className="modal-label">피드백을 남겨주세요</span>
               <h2>AI와의 대화는 어땠나요?</h2>
@@ -273,7 +288,7 @@ function Result() {
             <div className="feedback-input-section">
               <label>자세한 후기를 남겨주세요. (선택)</label>
               <textarea
-                placeholder="Please share your honest user experience. Detailed feedback would be a great help in improving the features."
+                placeholder="솔직한 사용 경험을 공유해주세요. 자세한 피드백은 기능 개선에 큰 도움이 됩니다."
                 value={feedbackText}
                 onChange={(e) => setFeedbackText(e.target.value)}
               />
@@ -283,7 +298,7 @@ function Result() {
               className="submit-btn"
               onClick={submitFeedback}
             >
-              Submit
+              피드백 제출
             </button>
           </div>
         </div>
@@ -585,6 +600,49 @@ function Result() {
           color: #9ca3af;
         }
 
+        /* Feedback Trigger Button */
+        .feedback-trigger-btn {
+          width: 100%;
+          padding: 14px;
+          margin-top: 16px;
+          background: transparent;
+          border: 2px solid #5046e4;
+          color: #5046e4;
+          font-size: 15px;
+          font-weight: 600;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .feedback-trigger-btn:hover {
+          background: rgba(80, 70, 228, 0.05);
+        }
+
+        /* Modal Close Button */
+        .modal-close-btn {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+          width: 32px;
+          height: 32px;
+          background: #f3f4f6;
+          border: none;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #6b7280;
+          cursor: pointer;
+          transition: background 0.2s;
+          z-index: 10;
+        }
+
+        .modal-close-btn:hover {
+          background: #e5e7eb;
+          color: #374151;
+        }
+
         /* Modal Styles */
         .modal-overlay {
           position: fixed;
@@ -606,6 +664,7 @@ function Result() {
           border-radius: 24px 24px 0 0;
           padding: 32px 24px 40px;
           animation: slideUp 0.3s ease;
+          position: relative;
         }
 
         @keyframes slideUp {

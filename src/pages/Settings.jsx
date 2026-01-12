@@ -1,18 +1,23 @@
 /**
  * @file pages/Settings.jsx
- * @description 맞춤설정 메인 페이지
+ * @description 맞춤설정 메인 페이지 (링글 앱 100% 동일 스타일)
  *
- * 링글 앱 스타일의 설정 메인 화면
- * 섹션: 공통 설정, 일반 전화, 그 외 전화
+ * - 헤더: "AI 전화" + 탭 (전화/맞춤설정/전화내역)
+ * - 동적 값 표시 (주 N회, 튜터명, 주제 N개)
+ * - 하단 네비게이션 바 (6개 탭)
  */
 
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, X } from 'lucide-react'
+import { ChevronRight, X, Check, Home, Users, Bot, Phone, Trophy, User } from 'lucide-react'
 import { getFromStorage, setToStorage } from '../utils/helpers'
+import { TUTORS } from '../constants'
 
 function Settings() {
   const navigate = useNavigate()
+
+  // 탭 상태
+  const [activeTab, setActiveTab] = useState('settings')
 
   // 설정 상태
   const [userName, setUserName] = useState('')
@@ -20,16 +25,49 @@ function Settings() {
   const [tempName, setTempName] = useState('')
   const [roleplayAlert, setRoleplayAlert] = useState(true)
   const [videoReviewAlert, setVideoReviewAlert] = useState(true)
+  const [showToast, setShowToast] = useState(false)
+  const [toastMessage, setToastMessage] = useState('')
+
+  // 동적 값 상태
+  const [scheduleCount, setScheduleCount] = useState(0)
+  const [tutorName, setTutorName] = useState('Gwen')
+  const [topicCount, setTopicCount] = useState(0)
+
+  // 토스트 표시 함수
+  const displayToast = (message) => {
+    setToastMessage(message)
+    setShowToast(true)
+    setTimeout(() => setShowToast(false), 2000)
+  }
 
   // 초기 로드
   useEffect(() => {
+    // 이름
     const savedName = getFromStorage('userName', '사용자')
     setUserName(savedName)
 
+    // 알림 설정
     const savedRoleplayAlert = getFromStorage('roleplayAlert', true)
     const savedVideoReviewAlert = getFromStorage('videoReviewAlert', true)
     setRoleplayAlert(savedRoleplayAlert)
     setVideoReviewAlert(savedVideoReviewAlert)
+
+    // 일정 카운트 (요일별 일정 합계)
+    const schedules = getFromStorage('callSchedules', {})
+    let totalSchedules = 0
+    Object.values(schedules).forEach(daySchedules => {
+      totalSchedules += daySchedules.length
+    })
+    setScheduleCount(totalSchedules)
+
+    // 튜터 이름
+    const savedTutor = getFromStorage('selectedTutor', 'gwen')
+    const tutor = TUTORS.find(t => t.id === savedTutor)
+    setTutorName(tutor?.name || 'Gwen')
+
+    // 커리큘럼 카운트
+    const curriculum = getFromStorage('selectedCurriculum', [])
+    setTopicCount(curriculum.length)
   }, [])
 
   // 이름 저장
@@ -37,6 +75,7 @@ function Settings() {
     if (tempName.trim()) {
       setUserName(tempName.trim())
       setToStorage('userName', tempName.trim())
+      displayToast('이름이 저장되었습니다')
     }
     setShowNameModal(false)
   }
@@ -46,36 +85,67 @@ function Settings() {
     const newValue = !roleplayAlert
     setRoleplayAlert(newValue)
     setToStorage('roleplayAlert', newValue)
+    displayToast(newValue ? '알림이 켜졌습니다' : '알림이 꺼졌습니다')
   }
 
   const handleVideoReviewToggle = () => {
     const newValue = !videoReviewAlert
     setVideoReviewAlert(newValue)
     setToStorage('videoReviewAlert', newValue)
+    displayToast(newValue ? '알림이 켜졌습니다' : '알림이 꺼졌습니다')
   }
 
   return (
-    <div className="settings-main-page">
-      {/* 헤더 */}
-      <header className="settings-main-header">
-        <h1>맞춤설정</h1>
+    <div className="settings-page">
+      {/* 상단 헤더 */}
+      <header className="main-header">
+        <h1>AI 전화</h1>
         <button className="close-btn" onClick={() => navigate('/')}>
           <X size={24} color="#9ca3af" />
         </button>
       </header>
 
-      <div className="settings-main-content">
+      {/* 탭 네비게이션 */}
+      <nav className="tab-nav">
+        <button
+          className={`tab-item ${activeTab === 'call' ? 'active' : ''}`}
+          onClick={() => setActiveTab('call')}
+        >
+          전화
+        </button>
+        <button
+          className={`tab-item ${activeTab === 'settings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('settings')}
+        >
+          맞춤설정
+        </button>
+        <button
+          className={`tab-item ${activeTab === 'history' ? 'active' : ''}`}
+          onClick={() => setActiveTab('history')}
+        >
+          전화내역
+        </button>
+      </nav>
+
+      {/* 메인 콘텐츠 */}
+      <div className="page-content">
         {/* 공통 설정 섹션 */}
         <section className="settings-section">
           <h2 className="section-label">공통 설정</h2>
           <div className="settings-list">
             <div className="settings-item" onClick={() => navigate('/settings/schedule')}>
               <span className="item-label">일정</span>
-              <ChevronRight size={20} color="#9ca3af" />
+              <div className="item-right">
+                <span className="item-value">주 {scheduleCount}회</span>
+                <ChevronRight size={20} color="#c0c0c0" />
+              </div>
             </div>
             <div className="settings-item" onClick={() => navigate('/settings/tutor')}>
               <span className="item-label">튜터</span>
-              <ChevronRight size={20} color="#9ca3af" />
+              <div className="item-right">
+                <span className="item-value">{tutorName}</span>
+                <ChevronRight size={20} color="#c0c0c0" />
+              </div>
             </div>
             <div
               className="settings-item"
@@ -87,7 +157,7 @@ function Settings() {
               <span className="item-label">내 이름</span>
               <div className="item-right">
                 <span className="item-value">{userName}</span>
-                <ChevronRight size={20} color="#9ca3af" />
+                <ChevronRight size={20} color="#c0c0c0" />
               </div>
             </div>
           </div>
@@ -99,7 +169,10 @@ function Settings() {
           <div className="settings-list">
             <div className="settings-item" onClick={() => navigate('/settings/curriculum')}>
               <span className="item-label">커리큘럼</span>
-              <ChevronRight size={20} color="#9ca3af" />
+              <div className="item-right">
+                <span className="item-value">주제 {topicCount}개</span>
+                <ChevronRight size={20} color="#c0c0c0" />
+              </div>
             </div>
           </div>
         </section>
@@ -128,28 +201,62 @@ function Settings() {
         </section>
       </div>
 
+      {/* 하단 네비게이션 바 */}
+      <nav className="bottom-nav">
+        <button className="nav-item" onClick={() => navigate('/')}>
+          <Home size={24} />
+          <span>홈</span>
+        </button>
+        <button className="nav-item">
+          <Users size={24} />
+          <span>1:1 수업</span>
+        </button>
+        <button className="nav-item">
+          <Bot size={24} />
+          <span>AI 튜터</span>
+        </button>
+        <button className="nav-item active">
+          <Phone size={24} />
+          <span>AI 전화</span>
+        </button>
+        <button className="nav-item">
+          <Trophy size={24} />
+          <span>성취</span>
+        </button>
+        <button className="nav-item">
+          <User size={24} />
+          <span>마이링글</span>
+        </button>
+      </nav>
+
+      {/* 토스트 메시지 */}
+      {showToast && (
+        <div className="toast">
+          <Check size={18} />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* 이름 수정 모달 */}
       {showNameModal && (
         <div className="modal-overlay" onClick={() => setShowNameModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-sheet" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>내 이름</h3>
-              <button className="close-btn" onClick={() => setShowNameModal(false)}>
-                <X size={24} color="#9ca3af" />
+              <button className="modal-close" onClick={() => setShowNameModal(false)}>
+                <X size={24} color="#888" />
               </button>
             </div>
-            <div className="modal-body">
-              <p className="modal-desc">AI 튜터가 부를 이름을 입력해주세요.</p>
-              <input
-                type="text"
-                className="name-input"
-                value={tempName}
-                onChange={e => setTempName(e.target.value)}
-                placeholder="이름 입력"
-                autoFocus
-              />
-            </div>
-            <button className="save-btn" onClick={handleSaveName}>
+            <p className="modal-desc">AI 튜터가 부를 이름을 입력해주세요.</p>
+            <input
+              type="text"
+              className="name-input"
+              value={tempName}
+              onChange={e => setTempName(e.target.value)}
+              placeholder="이름 입력"
+              autoFocus
+            />
+            <button className="primary-btn" onClick={handleSaveName}>
               저장
             </button>
           </div>
@@ -157,38 +264,69 @@ function Settings() {
       )}
 
       <style>{`
-        .settings-main-page {
+        .settings-page {
           min-height: 100vh;
-          background: #f5f5f5;
+          background: #f7f7f8;
           display: flex;
           flex-direction: column;
+          padding-bottom: 80px;
         }
 
-        .settings-main-header {
+        /* 상단 헤더 */
+        .main-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 16px 20px;
+          padding: 16px 20px 12px;
           background: white;
-          border-bottom: 1px solid #e5e7eb;
         }
 
-        .settings-main-header h1 {
-          font-size: 18px;
-          font-weight: 600;
-          color: #1f2937;
+        .main-header h1 {
+          font-size: 22px;
+          font-weight: 700;
+          color: #1a1a1a;
         }
 
         .close-btn {
           background: none;
           padding: 4px;
+          display: flex;
+          align-items: center;
         }
 
-        .settings-main-content {
+        /* 탭 네비게이션 */
+        .tab-nav {
+          display: flex;
+          background: white;
+          border-bottom: 1px solid #e8e8e8;
+          padding: 0 20px;
+        }
+
+        .tab-item {
+          flex: 1;
+          padding: 14px 0;
+          font-size: 15px;
+          font-weight: 500;
+          color: #888;
+          background: none;
+          border-bottom: 2px solid transparent;
+          transition: all 0.2s;
+        }
+
+        .tab-item.active {
+          color: #1a1a1a;
+          font-weight: 600;
+          border-bottom-color: #1a1a1a;
+        }
+
+        /* 페이지 콘텐츠 */
+        .page-content {
           flex: 1;
           padding: 20px;
+          overflow-y: auto;
         }
 
+        /* 설정 섹션 */
         .settings-section {
           margin-bottom: 24px;
         }
@@ -196,26 +334,26 @@ function Settings() {
         .section-label {
           font-size: 13px;
           font-weight: 600;
-          color: #6b7280;
-          margin-bottom: 8px;
+          color: #888;
+          margin-bottom: 10px;
           padding-left: 4px;
+          letter-spacing: -0.3px;
         }
 
         .settings-list {
           background: white;
-          border-radius: 12px;
+          border-radius: 16px;
           overflow: hidden;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         }
 
         .settings-item {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 16px 20px;
-          border-bottom: 1px solid #f3f4f6;
+          padding: 18px 20px;
+          border-bottom: 1px solid #f0f0f0;
           cursor: pointer;
-          transition: background 0.2s;
+          transition: background 0.15s;
         }
 
         .settings-item:last-child {
@@ -223,23 +361,24 @@ function Settings() {
         }
 
         .settings-item:active {
-          background: #f9fafb;
+          background: #f9f9f9;
         }
 
         .item-label {
           font-size: 16px;
-          color: #1f2937;
+          font-weight: 500;
+          color: #1a1a1a;
         }
 
         .item-right {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
         }
 
         .item-value {
-          font-size: 14px;
-          color: #9ca3af;
+          font-size: 15px;
+          color: #888;
         }
 
         /* 토글 스위치 */
@@ -250,14 +389,14 @@ function Settings() {
         .toggle-track {
           width: 52px;
           height: 32px;
-          background: #d1d5db;
+          background: #d0d0d0;
           border-radius: 16px;
           position: relative;
-          transition: background 0.3s;
+          transition: background 0.25s;
         }
 
         .toggle-track.active {
-          background: #5046e4;
+          background: #6366f1;
         }
 
         .toggle-thumb {
@@ -268,12 +407,82 @@ function Settings() {
           position: absolute;
           top: 2px;
           left: 2px;
-          transition: transform 0.3s;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+          transition: transform 0.25s;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
         }
 
         .toggle-track.active .toggle-thumb {
           transform: translateX(20px);
+        }
+
+        /* 하단 네비게이션 */
+        .bottom-nav {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          display: flex;
+          justify-content: space-around;
+          background: white;
+          border-top: 1px solid #e8e8e8;
+          padding: 8px 0 12px;
+          max-width: 480px;
+          margin: 0 auto;
+        }
+
+        .nav-item {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+          background: none;
+          padding: 4px 8px;
+          color: #888;
+          transition: color 0.2s;
+        }
+
+        .nav-item span {
+          font-size: 11px;
+          font-weight: 500;
+        }
+
+        .nav-item.active {
+          color: #6366f1;
+        }
+
+        /* 토스트 메시지 */
+        .toast {
+          position: fixed;
+          bottom: 100px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: #1a1a1a;
+          color: white;
+          padding: 14px 24px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 15px;
+          font-weight: 500;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+          animation: toastFadeIn 0.3s ease;
+          z-index: 2000;
+        }
+
+        .toast svg {
+          color: #22c55e;
+        }
+
+        @keyframes toastFadeIn {
+          from {
+            opacity: 0;
+            transform: translateX(-50%) translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+          }
         }
 
         /* 모달 */
@@ -290,9 +499,9 @@ function Settings() {
           z-index: 1000;
         }
 
-        .modal-content {
+        .modal-sheet {
           background: white;
-          border-radius: 24px 24px 0 0;
+          border-radius: 20px 20px 0 0;
           width: 100%;
           max-width: 480px;
           padding: 24px 20px 32px;
@@ -308,51 +517,53 @@ function Settings() {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 20px;
+          margin-bottom: 16px;
         }
 
         .modal-header h3 {
           font-size: 18px;
           font-weight: 600;
-          color: #1f2937;
+          color: #1a1a1a;
         }
 
-        .modal-body {
-          margin-bottom: 24px;
+        .modal-close {
+          background: none;
+          padding: 4px;
         }
 
         .modal-desc {
           font-size: 14px;
-          color: #6b7280;
-          margin-bottom: 16px;
+          color: #888;
+          margin-bottom: 20px;
         }
 
         .name-input {
           width: 100%;
           padding: 16px;
-          border: 2px solid #e5e7eb;
+          border: 1.5px solid #e0e0e0;
           border-radius: 12px;
           font-size: 16px;
+          margin-bottom: 24px;
           box-sizing: border-box;
         }
 
         .name-input:focus {
-          border-color: #5046e4;
+          border-color: #6366f1;
           outline: none;
         }
 
-        .save-btn {
+        .primary-btn {
           width: 100%;
-          padding: 18px;
-          background: #5046e4;
+          padding: 16px;
+          background: #6366f1;
           color: white;
           border-radius: 12px;
-          font-size: 17px;
+          font-size: 16px;
           font-weight: 600;
         }
 
-        .save-btn:active {
-          background: #4338ca;
+        .primary-btn:active {
+          background: #4f46e5;
         }
       `}</style>
     </div>

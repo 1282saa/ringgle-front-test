@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Phone, ChevronRight, Menu, Flame, Home as HomeIcon, Monitor, Bot, BarChart2, User } from 'lucide-react'
+import { Phone, ChevronLeft, ChevronRight, Menu, Flame, Home as HomeIcon, Monitor, Bot, BarChart2, User, Check } from 'lucide-react'
+import { loadMockData } from '../data/mockCallHistory'
 
 function Home() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('call') // call, settings, history
   const [callHistory, setCallHistory] = useState([])
+  const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [filterAnalysisOnly, setFilterAnalysisOnly] = useState(false)
 
   // 설정에서 저장된 값 로드
   const settings = JSON.parse(localStorage.getItem('tutorSettings') || '{}')
@@ -36,9 +39,52 @@ function Home() {
     // 통화 기록 로드
     const saved = localStorage.getItem('callHistory')
     if (saved) {
-      setCallHistory(JSON.parse(saved))
+      const history = JSON.parse(saved)
+      if (history.length > 0) {
+        setCallHistory(history)
+        return
+      }
     }
+    // 통화 기록이 없으면 목업 데이터 로드
+    console.log('[Home] Loading mock data...')
+    const mockData = loadMockData()
+    setCallHistory(mockData)
   }, [])
+
+  // 월 변경
+  const changeMonth = (delta) => {
+    const newDate = new Date(currentMonth)
+    newDate.setMonth(newDate.getMonth() + delta)
+    setCurrentMonth(newDate)
+  }
+
+  // 현재 월의 통화 기록 필터링
+  const filteredHistory = callHistory.filter(call => {
+    const callDate = new Date(call.timestamp)
+    const sameMonth = callDate.getMonth() === currentMonth.getMonth() &&
+                      callDate.getFullYear() === currentMonth.getFullYear()
+    if (!sameMonth) return false
+    if (filterAnalysisOnly) return call.words >= 150
+    return true
+  })
+
+  // 완료한 전화 개수
+  const completedCalls = callHistory.length
+
+  // 날짜 포맷팅 (링글 스타일)
+  const formatCallDate = (timestamp) => {
+    const date = new Date(timestamp)
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토']
+    const dayName = dayNames[date.getDay()]
+    const hours = date.getHours()
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    const ampm = hours >= 12 ? '오후' : '오전'
+    const hour12 = hours % 12 || 12
+    return `${year}. ${month}. ${day}(${dayName}) ${ampm} ${String(hour12).padStart(2, '0')}:${minutes}`
+  }
 
   const handleCall = () => {
     navigate('/call')
@@ -119,56 +165,100 @@ function Home() {
 
         {activeTab === 'history' && (
           <div className="history-section">
-            {callHistory.length > 0 ? (
-              callHistory.map((call, index) => (
-                <div key={index} className="history-card">
-                  <div className="history-card-header">
-                    <div className="history-tutor-avatar">
-                      <span>{call.tutorName?.[0] || 'G'}</span>
-                    </div>
-                    <div className="history-card-info">
-                      <h3>{call.tutorName || 'Gwen'}</h3>
-                      <p>{call.fullDate || call.date}</p>
+            {/* Summary Card */}
+            <div className="summary-card">
+              <div className="summary-item">
+                <span className="summary-value">{completedCalls}개</span>
+                <span className="summary-label">완료한 전화</span>
+              </div>
+              <div className="summary-divider" />
+              <div className="summary-item">
+                <span className="summary-value">무제한</span>
+                <span className="summary-label">남은 AI 분석 이용권</span>
+              </div>
+            </div>
+
+            {/* Notice Banner */}
+            <div className="notice-banner">
+              <div className="notice-icon">🚧</div>
+              <div className="notice-text">
+                <p className="notice-title">AI 분석 결과는 잠시 준비 중이에요.</p>
+                <p className="notice-desc">곧 '성취' 메뉴에서 더 나은 모습으로 돌아올게요.</p>
+              </div>
+            </div>
+
+            {/* Month Navigator */}
+            <div className="month-navigator">
+              <h2 className="month-title">{currentMonth.getMonth() + 1}월</h2>
+              <div className="month-arrows">
+                <button onClick={() => changeMonth(-1)}>
+                  <ChevronLeft size={24} />
+                </button>
+                <button onClick={() => changeMonth(1)}>
+                  <ChevronRight size={24} />
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Checkbox */}
+            <label className="filter-checkbox">
+              <div
+                className={`checkbox ${filterAnalysisOnly ? 'checked' : ''}`}
+                onClick={() => setFilterAnalysisOnly(!filterAnalysisOnly)}
+              >
+                {filterAnalysisOnly && <Check size={14} />}
+              </div>
+              <span>AI 분석 있는 대화만 보기</span>
+            </label>
+
+            {/* Call Cards */}
+            {filteredHistory.length > 0 ? (
+              filteredHistory.map((call) => {
+                const hasAnalysis = call.words >= 150
+                return (
+                  <div key={call.id} className="call-card">
+                    <span className="call-type-tag">전화</span>
+                    <p className="call-date">{formatCallDate(call.timestamp)}</p>
+                    <p className="call-words">
+                      <span className={hasAnalysis ? 'word-count-ok' : 'word-count-low'}>
+                        {call.words}단어
+                      </span>
+                      <span className="word-threshold"> / 150단어</span>
+                    </p>
+
+                    <div className="call-buttons">
+                      <button
+                        className="call-btn-item"
+                        onClick={() => navigate('/script', { state: { callId: call.id, callData: call } })}
+                      >
+                        대화 스크립트 확인
+                      </button>
+
+                      {hasAnalysis && (
+                        <button
+                          className="call-btn-item"
+                          onClick={() => navigate('/analysis', { state: { callId: call.id, callData: call } })}
+                        >
+                          AI 분석 확인
+                        </button>
+                      )}
+
+                      <button
+                        className="call-btn-item"
+                        onClick={() => navigate('/practice', { state: { callId: call.id, callData: call } })}
+                      >
+                        핵심 표현 연습하기
+                      </button>
                     </div>
                   </div>
-                  <div className="history-stats">
-                    <div className="stat-item">
-                      <span className="stat-label">통화 시간</span>
-                      <span className="stat-value">{call.duration}</span>
-                    </div>
-                    <div className="stat-item">
-                      <span className="stat-label">발화 단어</span>
-                      <span className="stat-value">{call.words}개</span>
-                    </div>
-                  </div>
-                  <div className="history-buttons">
-                    <button
-                      className="history-btn"
-                      onClick={() => navigate('/result', { state: { tab: 'script' } })}
-                    >
-                      대화 스크립트 확인
-                    </button>
-                    <button
-                      className="history-btn"
-                      onClick={() => navigate('/analysis', { state: { callIndex: index } })}
-                    >
-                      AI 분석 확인
-                    </button>
-                    <button
-                      className="history-btn primary"
-                      onClick={() => navigate('/practice', { state: { callIndex: index } })}
-                    >
-                      핵심 표현 연습하기
-                    </button>
-                  </div>
-                </div>
-              ))
+                )
+              })
             ) : (
               <div className="empty-history">
                 <div className="empty-icon">
                   <Phone size={32} color="#9ca3af" />
                 </div>
-                <p>아직 전화 내역이 없어요</p>
+                <p>이 달에는 전화 내역이 없어요</p>
                 <p className="sub">AI와 대화를 시작해보세요!</p>
               </div>
             )}
@@ -178,19 +268,19 @@ function Home() {
 
       {/* Bottom Navigation - 링글 6개 탭 */}
       <nav className="bottom-nav">
-        <button className="nav-item">
+        <button className="nav-item" onClick={() => setActiveTab('call')}>
           <HomeIcon size={22} />
           <span>홈</span>
         </button>
-        <button className="nav-item">
+        <button className="nav-item" onClick={() => alert('1:1 수업 기능은 준비 중입니다.')}>
           <Monitor size={22} />
           <span>1:1 수업</span>
         </button>
-        <button className="nav-item">
+        <button className="nav-item" onClick={() => navigate('/call')}>
           <Bot size={22} />
           <span>AI 튜터</span>
         </button>
-        <button className="nav-item active">
+        <button className="nav-item active" onClick={() => setActiveTab('call')}>
           <Phone size={22} />
           <span>AI 전화</span>
         </button>
@@ -344,91 +434,185 @@ function Home() {
           background: #4338ca;
         }
 
-        /* History Section - 링글 스타일 카드 */
+        /* History Section - 링글 스타일 */
         .history-section {
           display: flex;
           flex-direction: column;
           gap: 16px;
         }
 
-        .history-card {
+        /* Summary Card */
+        .summary-card {
           background: white;
           border: 1px solid #e5e7eb;
-          border-radius: 16px;
+          border-radius: 12px;
           padding: 20px;
-        }
-
-        .history-card-header {
           display: flex;
           align-items: center;
-          gap: 12px;
-          margin-bottom: 16px;
         }
 
-        .history-tutor-avatar {
-          width: 48px;
-          height: 48px;
-          background: #8b5cf6;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+        .summary-item {
+          flex: 1;
+          text-align: center;
         }
 
-        .history-tutor-avatar span {
-          font-size: 20px;
-          font-weight: 600;
-          color: white;
+        .summary-value {
+          display: block;
+          font-size: 18px;
+          font-weight: 700;
+          color: #5046e4;
+          margin-bottom: 4px;
         }
 
-        .history-card-info h3 {
-          font-size: 16px;
-          font-weight: 600;
-          color: #1f2937;
-          margin-bottom: 2px;
-        }
-
-        .history-card-info p {
+        .summary-label {
           font-size: 13px;
           color: #6b7280;
         }
 
-        .history-stats {
+        .summary-divider {
+          width: 1px;
+          height: 40px;
+          background: #e5e7eb;
+        }
+
+        /* Notice Banner */
+        .notice-banner {
+          background: #f3f4f6;
+          border-radius: 12px;
+          padding: 16px;
           display: flex;
-          gap: 24px;
-          padding: 12px 0;
-          border-top: 1px solid #f3f4f6;
-          border-bottom: 1px solid #f3f4f6;
-          margin-bottom: 16px;
+          gap: 12px;
+          align-items: flex-start;
         }
 
-        .stat-item {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
+        .notice-icon {
+          font-size: 20px;
         }
 
-        .stat-label {
-          font-size: 12px;
-          color: #9ca3af;
+        .notice-text {
+          flex: 1;
         }
 
-        .stat-value {
+        .notice-title {
           font-size: 15px;
           font-weight: 600;
           color: #1f2937;
+          margin-bottom: 4px;
         }
 
-        .history-buttons {
+        .notice-desc {
+          font-size: 13px;
+          color: #6b7280;
+        }
+
+        /* Month Navigator */
+        .month-navigator {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 0;
+        }
+
+        .month-title {
+          font-size: 20px;
+          font-weight: 700;
+          color: #1f2937;
+        }
+
+        .month-arrows {
+          display: flex;
+          gap: 8px;
+        }
+
+        .month-arrows button {
+          background: none;
+          padding: 4px;
+          color: #6b7280;
+        }
+
+        /* Filter Checkbox */
+        .filter-checkbox {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          cursor: pointer;
+          padding: 8px 0;
+        }
+
+        .checkbox {
+          width: 20px;
+          height: 20px;
+          border: 2px solid #d1d5db;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        }
+
+        .checkbox.checked {
+          background: #5046e4;
+          border-color: #5046e4;
+          color: white;
+        }
+
+        .filter-checkbox span {
+          font-size: 14px;
+          color: #374151;
+        }
+
+        /* Call Card - 링글 스타일 */
+        .call-card {
+          background: white;
+          border: 1px solid #e5e7eb;
+          border-radius: 12px;
+          padding: 20px;
+        }
+
+        .call-type-tag {
+          display: inline-block;
+          padding: 4px 10px;
+          background: #f3f4f6;
+          border-radius: 4px;
+          font-size: 12px;
+          color: #6b7280;
+          margin-bottom: 12px;
+        }
+
+        .call-date {
+          font-size: 16px;
+          font-weight: 600;
+          color: #1f2937;
+          margin-bottom: 4px;
+        }
+
+        .call-words {
+          font-size: 14px;
+          margin-bottom: 16px;
+        }
+
+        .word-count-ok {
+          color: #1f2937;
+        }
+
+        .word-count-low {
+          color: #9ca3af;
+        }
+
+        .word-threshold {
+          color: #9ca3af;
+        }
+
+        .call-buttons {
           display: flex;
           flex-direction: column;
           gap: 8px;
         }
 
-        .history-btn {
+        .call-btn-item {
           width: 100%;
           padding: 14px;
-          background: #f9fafb;
+          background: white;
           border: 1px solid #e5e7eb;
           border-radius: 10px;
           font-size: 14px;
@@ -437,18 +621,8 @@ function Home() {
           text-align: center;
         }
 
-        .history-btn:active {
-          background: #f3f4f6;
-        }
-
-        .history-btn.primary {
-          background: #5046e4;
-          border-color: #5046e4;
-          color: white;
-        }
-
-        .history-btn.primary:active {
-          background: #4338ca;
+        .call-btn-item:active {
+          background: #f9fafb;
         }
 
         .empty-history {

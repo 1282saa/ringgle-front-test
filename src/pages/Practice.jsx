@@ -138,22 +138,68 @@ function Practice() {
     }
   }
 
-  const evaluatePronunciation = (text) => {
-    // 간단한 유사도 계산
-    const target = currentExpression.corrected.toLowerCase().replace(/[.,!?]/g, '')
-    const spoken = text.toLowerCase().replace(/[.,!?]/g, '')
+  // Levenshtein 거리 계산 함수
+  const levenshteinDistance = (str1, str2) => {
+    const m = str1.length
+    const n = str2.length
+    const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0))
 
+    for (let i = 0; i <= m; i++) dp[i][0] = i
+    for (let j = 0; j <= n; j++) dp[0][j] = j
+
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (str1[i - 1] === str2[j - 1]) {
+          dp[i][j] = dp[i - 1][j - 1]
+        } else {
+          dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+        }
+      }
+    }
+    return dp[m][n]
+  }
+
+  const evaluatePronunciation = (text) => {
+    // 텍스트 정규화
+    const normalize = (str) => str.toLowerCase()
+      .replace(/[.,!?']/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    const target = normalize(currentExpression.corrected)
+    const spoken = normalize(text)
+
+    // 1. 문자 단위 Levenshtein 유사도 (40% 가중치)
+    const charDistance = levenshteinDistance(target, spoken)
+    const maxCharLen = Math.max(target.length, spoken.length)
+    const charSimilarity = maxCharLen > 0 ? (1 - charDistance / maxCharLen) * 100 : 0
+
+    // 2. 단어 순서 고려 유사도 (60% 가중치)
     const targetWords = target.split(' ')
     const spokenWords = spoken.split(' ')
 
-    let matchCount = 0
-    targetWords.forEach(word => {
-      if (spokenWords.includes(word)) {
-        matchCount++
+    let orderScore = 0
+    let matchedWords = 0
+
+    targetWords.forEach((word, index) => {
+      const spokenIndex = spokenWords.indexOf(word)
+      if (spokenIndex !== -1) {
+        matchedWords++
+        // 위치가 가까울수록 높은 점수
+        const positionDiff = Math.abs(index - spokenIndex)
+        const positionScore = Math.max(0, 1 - positionDiff / targetWords.length)
+        orderScore += positionScore
       }
     })
 
-    const accuracy = Math.round((matchCount / targetWords.length) * 100)
+    const wordMatchRate = targetWords.length > 0 ? (matchedWords / targetWords.length) * 100 : 0
+    const orderBonus = targetWords.length > 0 ? (orderScore / targetWords.length) * 20 : 0
+
+    // 최종 점수 계산 (문자 유사도 40% + 단어 매칭 60% + 순서 보너스)
+    const accuracy = Math.min(100, Math.round(
+      charSimilarity * 0.4 + wordMatchRate * 0.6 + orderBonus
+    ))
+
     setScores(prev => [...prev, accuracy])
     setShowResult(true)
   }

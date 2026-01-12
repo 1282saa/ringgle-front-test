@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Mic, MicOff, Volume2, Captions, X } from 'lucide-react'
+import { Mic, MicOff, Volume2, VolumeX, Captions, X } from 'lucide-react'
 import { sendMessage, textToSpeech, playAudioBase64 } from '../utils/api'
 
 // 자막 설정 옵션
@@ -11,6 +11,14 @@ const SUBTITLE_OPTIONS = [
   { id: 'off', label: '자막 끄기' },
 ]
 
+// 자막 모드별 버튼 레이블
+const SUBTITLE_BUTTON_LABELS = {
+  all: '모두 보기',
+  english: '영어만',
+  translation: '번역만',
+  off: '자막 끄기'
+}
+
 function Call() {
   const navigate = useNavigate()
   const [callTime, setCallTime] = useState(0)
@@ -18,10 +26,12 @@ function Call() {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
+  const [isSpeakerOn, setIsSpeakerOn] = useState(true) // 스피커 on/off
   const [subtitleMode, setSubtitleMode] = useState('all') // all, english, translation, off
   const [showSubtitleModal, setShowSubtitleModal] = useState(false)
   const [messages, setMessages] = useState([])
   const [transcript, setTranscript] = useState('')
+  const [interimTranscript, setInterimTranscript] = useState('') // 중간 인식 결과
   const [currentSubtitle, setCurrentSubtitle] = useState('')
   const [currentTranslation, setCurrentTranslation] = useState('')
   const [turnCount, setTurnCount] = useState(0)
@@ -56,21 +66,25 @@ function Call() {
 
       recognitionRef.current.onresult = (event) => {
         let finalTranscript = ''
-        let interimTranscript = ''
+        let interim = ''
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i]
           if (result.isFinal) {
             finalTranscript += result[0].transcript
           } else {
-            interimTranscript += result[0].transcript
+            interim += result[0].transcript
           }
         }
 
+        // 중간 결과 표시
+        setInterimTranscript(interim)
+
         if (finalTranscript) {
+          setInterimTranscript('')
           handleUserSpeech(finalTranscript)
         }
-        setTranscript(interimTranscript || finalTranscript)
+        setTranscript(interim || finalTranscript)
       }
 
       recognitionRef.current.onerror = (event) => {
@@ -118,6 +132,15 @@ function Call() {
   const speakText = async (text) => {
     setIsSpeaking(true)
     setCurrentSubtitle(text)
+
+    // 스피커가 꺼져 있으면 음성 재생 건너뛰기
+    if (!isSpeakerOn) {
+      setTimeout(() => {
+        setIsSpeaking(false)
+        startListening()
+      }, 1000) // 잠시 대기 후 리스닝 시작
+      return
+    }
 
     try {
       const ttsResponse = await textToSpeech(text, settings)
@@ -174,6 +197,20 @@ function Call() {
     } else {
       setIsMuted(true)
       stopListening()
+    }
+  }
+
+  // 스피커 토글
+  const toggleSpeaker = () => {
+    setIsSpeakerOn(!isSpeakerOn)
+    // 현재 재생 중인 오디오 중지
+    if (isSpeakerOn) {
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+      if ('speechSynthesis' in window) {
+        speechSynthesis.cancel()
+      }
     }
   }
 
@@ -255,16 +292,21 @@ function Call() {
     }
     localStorage.setItem('lastCallResult', JSON.stringify(result))
 
-    // 통화 기록 저장
+    // 통화 기록 저장 (Home.jsx와 호환되는 형식)
     const history = JSON.parse(localStorage.getItem('callHistory') || '[]')
+    const now = new Date()
     history.unshift({
-      date: new Date().toLocaleDateString('ko-KR'),
-      fullDate: new Date().toLocaleString('ko-KR'),
+      id: Date.now(), // 고유 ID
+      timestamp: now.toISOString(), // ISO 형식 (필터링용)
+      date: now.toLocaleDateString('ko-KR'),
+      fullDate: now.toLocaleString('ko-KR'),
       duration: formatTime(callTime),
+      durationSeconds: callTime, // 초 단위 저장
       words: wordCount,
+      turnCount,
       tutorName
     })
-    localStorage.setItem('callHistory', JSON.stringify(history.slice(0, 10)))
+    localStorage.setItem('callHistory', JSON.stringify(history.slice(0, 50))) // 최대 50개 저장
 
     navigate('/result')
   }
@@ -313,6 +355,13 @@ function Call() {
             </div>
           </div>
         )}
+
+        {/* 사용자 음성 인식 중간 결과 */}
+        {isListening && interimTranscript && (
+          <div className="interim-transcript">
+            <p>{interimTranscript}</p>
+          </div>
+        )}
       </div>
 
       {/* Bottom Controls - 링글 스타일 */}
@@ -323,12 +372,15 @@ function Call() {
             onClick={toggleMute}
           >
             {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
-            <span>소리끔</span>
+            <span>{isMuted ? '음소거됨' : '소리끔'}</span>
           </button>
 
-          <button className="control-btn">
-            <Volume2 size={24} />
-            <span>스피커</span>
+          <button
+            className={`control-btn ${!isSpeakerOn ? 'active' : ''}`}
+            onClick={toggleSpeaker}
+          >
+            {isSpeakerOn ? <Volume2 size={24} /> : <VolumeX size={24} />}
+            <span>{isSpeakerOn ? '스피커' : '스피커 끔'}</span>
           </button>
 
           <button
@@ -336,7 +388,7 @@ function Call() {
             onClick={() => setShowSubtitleModal(true)}
           >
             <Captions size={24} />
-            <span>모두 보기</span>
+            <span>{SUBTITLE_BUTTON_LABELS[subtitleMode]}</span>
           </button>
         </div>
 
@@ -472,6 +524,22 @@ function Call() {
         @keyframes dotWave {
           0%, 60%, 100% { opacity: 0.4; transform: scale(1); }
           30% { opacity: 1; transform: scale(1.2); }
+        }
+
+        /* 중간 인식 결과 */
+        .interim-transcript {
+          margin-top: 20px;
+          padding: 12px 20px;
+          background: rgba(34, 197, 94, 0.2);
+          border-radius: 12px;
+          border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .interim-transcript p {
+          color: rgba(255, 255, 255, 0.8);
+          font-size: 16px;
+          font-style: italic;
+          text-align: center;
         }
 
         /* Bottom Controls */
