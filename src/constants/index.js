@@ -44,14 +44,13 @@ export const STORAGE_KEYS = {
  * @constant {Array<Object>}
  * @property {string} id - 억양 식별자
  * @property {string} label - 한글 라벨
- * @property {string} icon - 국기 이모지
  * @property {string} sublabel - 영문 라벨
  */
 export const ACCENTS = [
-  { id: 'us', label: '미국', icon: '🇺🇸', sublabel: 'American' },
-  { id: 'uk', label: '영국', icon: '🇬🇧', sublabel: 'British' },
-  { id: 'au', label: '호주', icon: '🇦🇺', sublabel: 'Australian' },
-  { id: 'in', label: '인도', icon: '🇮🇳', sublabel: 'Indian' },
+  { id: 'us', label: '미국', sublabel: 'American' },
+  { id: 'uk', label: '영국', sublabel: 'British' },
+  { id: 'au', label: '호주', sublabel: 'Australian' },
+  { id: 'in', label: '인도', sublabel: 'Indian' },
 ]
 
 /**
@@ -70,8 +69,8 @@ export const ACCENT_LABELS = {
  * @constant {Array<Object>}
  */
 export const GENDERS = [
-  { id: 'female', label: '여성', icon: '👩' },
-  { id: 'male', label: '남성', icon: '👨' },
+  { id: 'female', label: '여성' },
+  { id: 'male', label: '남성' },
 ]
 
 /**
@@ -89,7 +88,7 @@ export const SPEEDS = [
 ]
 
 /**
- * 난이도 옵션
+ * 난이도 옵션 (상세)
  * @constant {Array<Object>}
  */
 export const LEVELS = [
@@ -99,23 +98,57 @@ export const LEVELS = [
 ]
 
 /**
+ * 난이도 옵션 (간략 - 설정 화면용)
+ * @constant {Array<Object>}
+ */
+export const DIFFICULTIES = [
+  { id: 'easy', label: 'Easy' },
+  { id: 'intermediate', label: 'Intermediate' },
+]
+
+/**
+ * 통화 시간 옵션
+ * @constant {Array<Object>}
+ */
+export const DURATIONS = [
+  { id: '5', label: '5분' },
+  { id: '10', label: '10분' },
+]
+
+/**
  * 대화 주제 옵션
  * @constant {Array<Object>}
  */
 export const TOPICS = [
-  { id: 'business', label: '비즈니스', icon: '💼' },
-  { id: 'daily', label: '일상 대화', icon: '💬' },
-  { id: 'travel', label: '여행', icon: '✈️' },
-  { id: 'interview', label: '면접', icon: '🎯' },
+  { id: 'business', label: '비즈니스' },
+  { id: 'daily', label: '일상 대화' },
+  { id: 'travel', label: '여행' },
+  { id: 'interview', label: '면접' },
 ]
 
 // ============================================
-// 튜터 이름 목록
+// 튜터 데이터
 // ============================================
 
 /**
- * 성별에 따른 튜터 이름 목록
+ * AI 튜터 목록 (전체 데이터)
+ * @constant {Array<Object>}
+ */
+export const TUTORS = [
+  { id: 'gwen', name: 'Gwen', nationality: '미국', accent: 'us', gender: 'female', genderLabel: '여성', tags: ['밝은', '활기찬'] },
+  { id: 'chris', name: 'Chris', nationality: '미국', accent: 'us', gender: 'male', genderLabel: '남성', tags: ['밝은', '활기찬'] },
+  { id: 'emma', name: 'Emma', nationality: '영국', accent: 'uk', gender: 'female', genderLabel: '여성', tags: ['차분한', '친절한'] },
+  { id: 'james', name: 'James', nationality: '영국', accent: 'uk', gender: 'male', genderLabel: '남성', tags: ['차분한', '전문적'] },
+  { id: 'olivia', name: 'Olivia', nationality: '호주', accent: 'au', gender: 'female', genderLabel: '여성', tags: ['활발한', '유쾌한'] },
+  { id: 'noah', name: 'Noah', nationality: '호주', accent: 'au', gender: 'male', genderLabel: '남성', tags: ['친근한', '편안한'] },
+  { id: 'sophia', name: 'Sophia', nationality: '인도', accent: 'in', gender: 'female', genderLabel: '여성', tags: ['따뜻한', '인내심'] },
+  { id: 'liam', name: 'Liam', nationality: '인도', accent: 'in', gender: 'male', genderLabel: '남성', tags: ['논리적', '체계적'] },
+]
+
+/**
+ * 성별에 따른 튜터 이름 목록 (레거시 호환)
  * @constant {Object}
+ * @deprecated TUTORS 사용 권장
  */
 export const TUTOR_NAMES = {
   female: ['Gwen', 'Emma', 'Olivia', 'Sophia'],
