@@ -14,6 +14,8 @@ This directory contains detailed documentation for each development phase of the
 | [Phase 4](PHASE-04-call-analysis.md) | Call Result Analysis & CAFP Scoring | ✅ Completed | 2026-01-12 |
 | [Phase 5](PHASE-05-github-setup.md) | GitHub Repository Setup | ✅ Completed | 2026-01-12 |
 | [Phase 6](PHASE-06-settings-backend.md) | Settings Backend Integration | ✅ Completed | 2026-01-12 |
+| [Phase 7](PHASE-07-settings-ui-refinement.md) | Settings UI/UX Refinement | ✅ Completed | 2026-01-12 |
+| [Phase 8](PHASE-08-constant-refactoring.md) | Constant Refactoring & Code Cleanup | ✅ Completed | 2026-01-12 |
 
 ---
 
@@ -57,6 +59,18 @@ This directory contains detailed documentation for each development phase of the
 - Cross-device settings sync
 - Offline-first with localStorage fallback
 
+### Phase 7: Settings UI/UX Refinement
+- Settings.jsx: 링글 앱 스타일 섹션 리스트
+- ScheduleSettings.jsx: 요일별 일정 관리
+- TutorSettings.jsx: 튜터 캐러셀 + 옵션 선택
+- CurriculumSettings.jsx: 체크박스 아코디언 토픽
+
+### Phase 8: Constant Refactoring & Code Cleanup
+- 상수 중앙화 (TUTORS, DIFFICULTIES, DURATIONS)
+- 중복 상수 제거 (TutorSettings.jsx)
+- 이모지 아이콘 제거 (ACCENTS, GENDERS, TOPICS)
+- 코드 일관성 및 유지보수성 향상
+
 ---
 
 ## Tech Stack Summary
@@ -93,11 +107,11 @@ This directory contains detailed documentation for each development phase of the
 
 | Phase | Title | Description |
 |-------|-------|-------------|
-| Phase 7 | UI/UX Polish | Ringle-style UI improvements |
-| Phase 8 | Progress Tracking | Track learning over sessions |
-| Phase 9 | Lesson Plans | Structured learning paths |
-| Phase 10 | Mobile Deployment | App Store & Play Store |
-| Phase 11 | Analytics | Usage & performance metrics |
+| Phase 9 | Progress Tracking | Track learning over sessions |
+| Phase 10 | Lesson Plans | Structured learning paths |
+| Phase 11 | Mobile Deployment | App Store & Play Store |
+| Phase 12 | Analytics | Usage & performance metrics |
+| Phase 13 | Component Extraction | Common components, CSS separation |
 
 ---
 
