@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Phone, ChevronLeft, ChevronRight, Menu, Flame, Home as HomeIcon, Monitor, Bot, BarChart2, User, Check } from 'lucide-react'
+import { Phone, ChevronLeft, ChevronRight, Menu, Flame, Home as HomeIcon, Monitor, Bot, BarChart2, User, Check, Loader } from 'lucide-react'
 import { loadMockData } from '../data/mockCallHistory'
+import { getSessions } from '../utils/api'
+import { getDeviceId } from '../utils/helpers'
 
 function Home() {
   const navigate = useNavigate()
   const location = useLocation()
   const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'call') // call, settings, history
   const [callHistory, setCallHistory] = useState([])
+  const [dbSessions, setDbSessions] = useState([])
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false)
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [filterAnalysisOnly, setFilterAnalysisOnly] = useState(false)
 
@@ -43,21 +47,56 @@ function Home() {
     }
   }, [location.state])
 
+  // DynamoDB에서 세션 목록 로드
+  const loadSessionsFromDB = async () => {
+    setIsLoadingSessions(true)
+    try {
+      const deviceId = getDeviceId()
+      console.log('[Home] Fetching sessions from DynamoDB...')
+      const result = await getSessions(deviceId, 50)
+
+      if (result.sessions && result.sessions.length > 0) {
+        console.log('[Home] Loaded', result.sessions.length, 'sessions from DB')
+        setDbSessions(result.sessions)
+      } else {
+        console.log('[Home] No sessions found in DB')
+        setDbSessions([])
+      }
+    } catch (err) {
+      console.error('[Home] Failed to load sessions:', err)
+      setDbSessions([])
+    } finally {
+      setIsLoadingSessions(false)
+    }
+  }
+
   useEffect(() => {
-    // 통화 기록 로드
+    // 통화 기록 로드 (로컬 + DB)
     const saved = localStorage.getItem('callHistory')
     if (saved) {
       const history = JSON.parse(saved)
       if (history.length > 0) {
         setCallHistory(history)
-        return
       }
     }
-    // 통화 기록이 없으면 목업 데이터 로드
-    console.log('[Home] Loading mock data...')
-    const mockData = loadMockData()
-    setCallHistory(mockData)
+
+    // 목업 데이터는 로컬에 기록이 없을 때만
+    if (!saved || JSON.parse(saved).length === 0) {
+      console.log('[Home] Loading mock data...')
+      const mockData = loadMockData()
+      setCallHistory(mockData)
+    }
+
+    // DynamoDB에서 세션 로드
+    loadSessionsFromDB()
   }, [])
+
+  // 히스토리 탭 활성화 시 세션 새로고침
+  useEffect(() => {
+    if (activeTab === 'history') {
+      loadSessionsFromDB()
+    }
+  }, [activeTab])
 
   // 월 변경
   const changeMonth = (delta) => {
@@ -76,8 +115,42 @@ function Home() {
     return true
   })
 
-  // 완료한 전화 개수
-  const completedCalls = callHistory.length
+  // 완료한 전화 개수 (DB 세션 우선)
+  const completedCalls = dbSessions.length > 0 ? dbSessions.length : callHistory.length
+
+  // DB 세션을 현재 월로 필터링
+  const filteredDbSessions = dbSessions.filter(session => {
+    const sessionDate = new Date(session.startedAt || session.timestamp)
+    const sameMonth = sessionDate.getMonth() === currentMonth.getMonth() &&
+                      sessionDate.getFullYear() === currentMonth.getFullYear()
+    if (!sameMonth) return false
+    if (filterAnalysisOnly) return (session.wordCount || 0) >= 150
+    return true
+  })
+
+  // DB 세션 날짜 포맷팅
+  const formatSessionDate = (timestamp) => {
+    if (!timestamp) return ''
+    const date = new Date(timestamp)
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토']
+    const dayName = dayNames[date.getDay()]
+    const hours = date.getHours()
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    const ampm = hours >= 12 ? '오후' : '오전'
+    const hour12 = hours % 12 || 12
+    return `${year}. ${month}. ${day}(${dayName}) ${ampm} ${String(hour12).padStart(2, '0')}:${minutes}`
+  }
+
+  // 통화 시간 포맷팅
+  const formatDuration = (seconds) => {
+    if (!seconds) return '0:00'
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${String(secs).padStart(2, '0')}`
+  }
 
   // 날짜 포맷팅 (링글 스타일)
   const formatCallDate = (timestamp) => {
@@ -219,49 +292,144 @@ function Home() {
               <span>AI 분석 있는 대화만 보기</span>
             </label>
 
-            {/* Call Cards */}
-            {filteredHistory.length > 0 ? (
-              filteredHistory.map((call) => {
-                const hasAnalysis = call.words >= 150
-                return (
-                  <div key={call.id} className="call-card">
-                    <span className="call-type-tag">전화</span>
-                    <p className="call-date">{formatCallDate(call.timestamp)}</p>
-                    <p className="call-words">
-                      <span className={hasAnalysis ? 'word-count-ok' : 'word-count-low'}>
-                        {call.words}단어
-                      </span>
-                      <span className="word-threshold"> / 150단어</span>
-                    </p>
+            {/* Loading State */}
+            {isLoadingSessions && (
+              <div className="loading-sessions">
+                <Loader className="spinner" size={24} />
+                <span>대화 내역 불러오는 중...</span>
+              </div>
+            )}
 
-                    <div className="call-buttons">
-                      <button
-                        className="call-btn-item"
-                        onClick={() => navigate('/script', { state: { callId: call.id, callData: call } })}
-                      >
-                        대화 스크립트 확인
-                      </button>
+            {/* DB Sessions (우선 표시) */}
+            {!isLoadingSessions && filteredDbSessions.length > 0 && (
+              <>
+                {filteredDbSessions.map((session) => {
+                  const hasAnalysis = (session.wordCount || 0) >= 150
+                  const words = session.wordCount || 0
+                  return (
+                    <div key={session.sessionId} className="call-card">
+                      <div className="call-card-header">
+                        <span className="call-type-tag">AI 전화</span>
+                        {session.tutorName && (
+                          <span className="tutor-badge">{session.tutorName}</span>
+                        )}
+                      </div>
+                      <p className="call-date">{formatSessionDate(session.startedAt)}</p>
+                      <div className="call-stats">
+                        <p className="call-words">
+                          <span className={hasAnalysis ? 'word-count-ok' : 'word-count-low'}>
+                            {words}단어
+                          </span>
+                          <span className="word-threshold"> / 150단어</span>
+                        </p>
+                        {session.duration > 0 && (
+                          <p className="call-duration">
+                            <span>{formatDuration(session.duration)}</span>
+                          </p>
+                        )}
+                        {session.turnCount > 0 && (
+                          <p className="call-turns">
+                            <span>{session.turnCount}턴</span>
+                          </p>
+                        )}
+                      </div>
 
-                      {hasAnalysis && (
+                      <div className="call-buttons">
+                        <button
+                          className="call-btn-item primary"
+                          onClick={() => navigate('/script', {
+                            state: {
+                              sessionId: session.sessionId,
+                              isDbSession: true,
+                              sessionData: session
+                            }
+                          })}
+                        >
+                          대화 스크립트 확인
+                        </button>
+
+                        {hasAnalysis && (
+                          <button
+                            className="call-btn-item"
+                            onClick={() => navigate('/analysis', {
+                              state: {
+                                sessionId: session.sessionId,
+                                isDbSession: true,
+                                sessionData: session
+                              }
+                            })}
+                          >
+                            AI 분석 확인
+                          </button>
+                        )}
+
                         <button
                           className="call-btn-item"
-                          onClick={() => navigate('/analysis', { state: { callId: call.id, callData: call } })}
+                          onClick={() => navigate('/practice', {
+                            state: {
+                              sessionId: session.sessionId,
+                              isDbSession: true,
+                              sessionData: session
+                            }
+                          })}
                         >
-                          AI 분석 확인
+                          핵심 표현 연습하기
                         </button>
-                      )}
-
-                      <button
-                        className="call-btn-item"
-                        onClick={() => navigate('/practice', { state: { callId: call.id, callData: call } })}
-                      >
-                        핵심 표현 연습하기
-                      </button>
+                      </div>
                     </div>
-                  </div>
-                )
-              })
-            ) : (
+                  )
+                })}
+              </>
+            )}
+
+            {/* Local Call Cards (DB가 비어있을 때 폴백) */}
+            {!isLoadingSessions && filteredDbSessions.length === 0 && filteredHistory.length > 0 && (
+              <>
+                {filteredHistory.map((call) => {
+                  const hasAnalysis = call.words >= 150
+                  return (
+                    <div key={call.id} className="call-card">
+                      <span className="call-type-tag">전화</span>
+                      <p className="call-date">{formatCallDate(call.timestamp)}</p>
+                      <p className="call-words">
+                        <span className={hasAnalysis ? 'word-count-ok' : 'word-count-low'}>
+                          {call.words}단어
+                        </span>
+                        <span className="word-threshold"> / 150단어</span>
+                      </p>
+
+                      <div className="call-buttons">
+                        <button
+                          className="call-btn-item"
+                          onClick={() => navigate('/script', { state: { callId: call.id, callData: call } })}
+                        >
+                          대화 스크립트 확인
+                        </button>
+
+                        {hasAnalysis && (
+                          <button
+                            className="call-btn-item"
+                            onClick={() => navigate('/analysis', { state: { callId: call.id, callData: call } })}
+                          >
+                            AI 분석 확인
+                          </button>
+                        )}
+
+                        <button
+                          className="call-btn-item"
+                          onClick={() => navigate('/practice', { state: { callId: call.id, callData: call } })}
+                        >
+                          핵심 표현 연습하기
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </>
+            )}
+
+            {/* Empty State */}
+            {!isLoadingSessions && filteredDbSessions.length === 0 && filteredHistory.length === 0 && (
               <div className="empty-history">
                 <div className="empty-icon">
                   <Phone size={32} color="#9ca3af" />
@@ -577,12 +745,41 @@ function Home() {
           color: #374151;
         }
 
+        /* Loading Sessions */
+        .loading-sessions {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          padding: 40px 20px;
+          background: white;
+          border-radius: 12px;
+          color: #6b7280;
+          font-size: 14px;
+        }
+
+        .loading-sessions .spinner {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
         /* Call Card - 링글 스타일 */
         .call-card {
           background: white;
           border: 1px solid #e5e7eb;
           border-radius: 12px;
           padding: 20px;
+        }
+
+        .call-card-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 12px;
         }
 
         .call-type-tag {
@@ -592,7 +789,39 @@ function Home() {
           border-radius: 4px;
           font-size: 12px;
           color: #6b7280;
-          margin-bottom: 12px;
+        }
+
+        .tutor-badge {
+          padding: 4px 10px;
+          background: #ede9fe;
+          border-radius: 4px;
+          font-size: 12px;
+          color: #7c3aed;
+          font-weight: 500;
+        }
+
+        .call-stats {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 16px;
+          flex-wrap: wrap;
+        }
+
+        .call-duration,
+        .call-turns {
+          font-size: 14px;
+          color: #6b7280;
+        }
+
+        .call-btn-item.primary {
+          background: #5046e4;
+          color: white;
+          border-color: #5046e4;
+        }
+
+        .call-btn-item.primary:active {
+          background: #4338ca;
         }
 
         .call-date {

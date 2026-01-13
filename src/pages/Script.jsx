@@ -1,48 +1,96 @@
 /**
  * @file pages/Script.jsx
- * @description 대화 스크립트 확인 화면
+ * @description 대화 스크립트 확인 화면 (링글 스타일)
  *
  * 기능:
- * - AI/User 메시지 버블 표시
- * - 번역 보기 토글
- * - 교정 받기 버튼
- * - 음성 재생
+ * - 사용자: 원본(보라) + 교정(흰색) 두 버블 시스템
+ * - AI: 흰색 버블 + 번역 보기
+ * - 턴/단어 카운트 표시
+ * - 모든 메시지 TTS 재생
  */
 
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   ArrowLeft, Volume2, ChevronDown, ChevronUp,
-  MessageCircle, AlertCircle, Check
+  MessageCircle, Loader, Settings, Sparkles, Pencil
 } from 'lucide-react'
-import { textToSpeech, playAudioBase64 } from '../utils/api'
+import { textToSpeech, playAudioBase64, getSessionDetail } from '../utils/api'
+import { getDeviceId } from '../utils/helpers'
 
 function Script() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // location.state에서 callData 가져오기
-  const { callId, callData } = location.state || {}
+  const { callId, callData, sessionId, isDbSession, sessionData } = location.state || {}
 
   const [messages, setMessages] = useState([])
-  const [corrections, setCorrections] = useState([])
   const [showTranslation, setShowTranslation] = useState({})
-  const [showCorrection, setShowCorrection] = useState({})
+  const [showCorrection, setShowCorrection] = useState({}) // 'loading' | 'done' | undefined
   const [playingId, setPlayingId] = useState(null)
   const [tutorInfo, setTutorInfo] = useState({ name: 'AI', accent: 'us' })
+  const [isLoading, setIsLoading] = useState(false)
+  const [sessionMeta, setSessionMeta] = useState(null)
+  const [topic, setTopic] = useState('Daily Conversation')
+
+  // 토픽 매핑
+  const topicMap = {
+    'business': 'Business & Workplace',
+    'daily': 'Daily Conversation',
+    'travel': 'Travel & Tourism',
+    'interview': 'Job Interview'
+  }
+
+  // DB 세션에서 대화 내용 로드
+  const loadSessionFromDB = async (sessId) => {
+    setIsLoading(true)
+    try {
+      const deviceId = getDeviceId()
+      const result = await getSessionDetail(deviceId, sessId)
+
+      if (result.messages && result.messages.length > 0) {
+        const messagesWithId = result.messages.map((msg, idx) => ({
+          ...msg,
+          id: msg.messageId || `msg-${idx}`,
+          role: msg.role,
+          content: msg.content,
+          turnNumber: msg.turnNumber || idx,
+          wordCount: msg.content ? msg.content.split(' ').length : 0
+        }))
+        setMessages(messagesWithId)
+        // 교정은 사용자가 "교정 받기" 클릭 시에만 표시
+      }
+
+      if (result.session) {
+        setTutorInfo({
+          name: result.session.tutorName || 'AI',
+          accent: result.session.accent || 'us'
+        })
+        setSessionMeta(result.session)
+        setTopic(topicMap[result.session.topic] || 'Daily Conversation')
+      }
+    } catch (err) {
+      console.error('[Script] Failed to load session:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
-    if (callData) {
+    if (isDbSession && sessionId) {
+      loadSessionFromDB(sessionId)
+      if (sessionData) {
+        setTutorInfo({
+          name: sessionData.tutorName || 'AI',
+          accent: sessionData.accent || 'us'
+        })
+        setTopic(topicMap[sessionData.topic] || 'Daily Conversation')
+      }
+    } else if (callData) {
       setMessages(callData.messages || [])
-      setCorrections(callData.corrections || [])
       setTutorInfo(callData.tutor || { name: 'AI', accent: 'us' })
     }
-  }, [callData])
-
-  // 메시지에 대한 교정 찾기
-  const getCorrectionForMessage = (messageId) => {
-    return corrections.find(c => c.messageId === messageId)
-  }
+  }, [callData, isDbSession, sessionId, sessionData])
 
   // 번역 토글
   const toggleTranslation = (messageId) => {
@@ -52,12 +100,41 @@ function Script() {
     }))
   }
 
-  // 교정 토글
-  const toggleCorrection = (messageId) => {
+  // 교정 요청/토글 (로딩 → 완료 → 숨기기 토글)
+  const requestCorrection = (messageId) => {
+    const currentState = showCorrection[messageId]
+
+    // 완료 상태 → 숨기기
+    if (currentState === 'done') {
+      setShowCorrection(prev => ({
+        ...prev,
+        [messageId]: 'hidden'
+      }))
+      return
+    }
+
+    // 숨김 상태 → 다시 보이기 (로딩 없이)
+    if (currentState === 'hidden') {
+      setShowCorrection(prev => ({
+        ...prev,
+        [messageId]: 'done'
+      }))
+      return
+    }
+
+    // 첫 요청 → 로딩 상태로 변경
     setShowCorrection(prev => ({
       ...prev,
-      [messageId]: !prev[messageId]
+      [messageId]: 'loading'
     }))
+
+    // 1.5초 후 완료 (실제로는 AI API 호출)
+    setTimeout(() => {
+      setShowCorrection(prev => ({
+        ...prev,
+        [messageId]: 'done'
+      }))
+    }, 1500)
   }
 
   // TTS 재생
@@ -72,7 +149,6 @@ function Script() {
         await playAudioBase64(ttsResponse.audio)
       }
     } catch (err) {
-      // Fallback to browser TTS
       if ('speechSynthesis' in window) {
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.lang = 'en-US'
@@ -83,461 +159,505 @@ function Script() {
     }
   }
 
-  // 날짜 포맷팅
-  const formatDate = (timestamp) => {
-    if (!timestamp) return ''
-    const date = new Date(timestamp)
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    const dayNames = ['일', '월', '화', '수', '목', '금', '토']
-    const dayName = dayNames[date.getDay()]
-    return `${year}. ${month}. ${day}(${dayName})`
+  // 교정된 텍스트 생성 (filler words 제거)
+  const getCorrectedText = (rawText) => {
+    if (!rawText) return ''
+
+    // filler words 제거 및 정리
+    let corrected = rawText
+      .replace(/\b(um+|uh+|er+|ah+|like,?\s*you know,?)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .replace(/\s+([.,!?])/g, '$1')
+      .replace(/([.,!?])\s*([.,!?])/g, '$1')
+      .trim()
+
+    // 첫 글자 대문자
+    if (corrected.length > 0) {
+      corrected = corrected.charAt(0).toUpperCase() + corrected.slice(1)
+    }
+
+    // 마침표 추가
+    if (corrected && !/[.!?]$/.test(corrected)) {
+      corrected += '.'
+    }
+
+    return corrected
   }
 
-  if (!callData) {
+  // 문법 설명 생성
+  const getGrammarExplanation = (rawText, correctedText) => {
+    const explanations = []
+
+    // 반복되는 단어 체크
+    const repeatPattern = /\b(\w+)\s+\1\b/gi
+    if (repeatPattern.test(rawText)) {
+      explanations.push("반복되는 단어가 제거되었습니다.")
+    }
+
+    // filler words 체크
+    if (/\b(um+|uh+|er+|ah+)\b/gi.test(rawText)) {
+      explanations.push("'um', 'uh' 등의 군더더기 표현이 제거되었습니다.")
+    }
+
+    // I 대문자 체크
+    if (/\bi\b/.test(rawText) && /\bI\b/.test(correctedText)) {
+      explanations.push("'i'는 항상 대문자 'I'로 써야 합니다.")
+    }
+
+    if (explanations.length === 0) {
+      explanations.push("문법적으로 자연스럽게 다듬어졌습니다.")
+    }
+
+    return explanations.join(' ')
+  }
+
+  // 턴 번호 계산 (사용자 메시지 기준)
+  const getUserTurnNumber = (index) => {
+    let turnCount = 0
+    for (let i = 0; i <= index; i++) {
+      if (messages[i]?.role === 'user') {
+        turnCount++
+      }
+    }
+    return turnCount
+  }
+
+  // 누적 단어 수 계산
+  const getCumulativeWordCount = (index) => {
+    let wordCount = 0
+    for (let i = 0; i <= index; i++) {
+      if (messages[i]?.role === 'user' && messages[i]?.content) {
+        wordCount += messages[i].content.split(' ').filter(w => w.length > 0).length
+      }
+    }
+    return wordCount
+  }
+
+  if (!callData && !isDbSession && !isLoading) {
     return (
       <div className="script-error">
         <p>데이터를 찾을 수 없습니다.</p>
-        <button onClick={() => navigate('/')}>홈으로 돌아가기</button>
+        <button onClick={() => navigate('/', { state: { activeTab: 'history' } })}>홈으로 돌아가기</button>
+        <style>{styles}</style>
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="script-loading">
+        <Loader className="spinner" size={32} />
+        <p>대화 내용을 불러오는 중...</p>
+        <style>{styles}</style>
       </div>
     )
   }
 
   return (
     <div className="script-page">
-      {/* Header */}
+      {/* Header - 링글 스타일 */}
       <header className="script-header">
-        <button className="back-btn" onClick={() => navigate(-1)}>
+        <button className="back-btn" onClick={() => navigate('/', { state: { activeTab: 'history' } })}>
           <ArrowLeft size={24} />
         </button>
-        <div className="header-info">
-          <h1>대화 스크립트</h1>
-          <p className="header-date">{formatDate(callData.timestamp)}</p>
-        </div>
+        <h1 className="header-title">{topic}</h1>
+        <button className="settings-btn" onClick={() => navigate('/settings')}>
+          <Settings size={22} />
+        </button>
       </header>
-
-      {/* Tutor Info */}
-      <div className="tutor-banner">
-        <div className="tutor-avatar">
-          <span>{tutorInfo.name?.[0] || 'A'}</span>
-        </div>
-        <span className="tutor-name">{tutorInfo.name}</span>
-        <span className="tutor-tag">#{tutorInfo.accent === 'us' ? '미국' : tutorInfo.accent === 'uk' ? '영국' : tutorInfo.accent}</span>
-      </div>
 
       {/* Messages */}
       <div className="messages-container">
-        {messages.map((message) => {
-          const isAI = message.role === 'assistant' || message.speaker === 'ai'
+        {messages.length === 0 && (
+          <div className="empty-messages">
+            <MessageCircle size={48} color="#d1d5db" />
+            <p>대화 내용이 없습니다.</p>
+          </div>
+        )}
+
+        {messages.map((message, index) => {
+          const isAI = message.role === 'assistant'
           const messageId = message.id
-          const correction = getCorrectionForMessage(messageId)
-          const hasTranslation = isAI && message.translation
-          const content = message.content || message.en || ''
+          const content = message.content || ''
+          const correctedText = !isAI ? getCorrectedText(content) : ''
+          const grammarExplanation = !isAI ? getGrammarExplanation(content, correctedText) : ''
+          const hasDifference = !isAI && content !== correctedText
+          const correctionState = showCorrection[messageId] // 'loading' | 'done' | undefined
 
           return (
-            <div
-              key={messageId}
-              className={`message-wrapper ${isAI ? 'ai' : 'user'}`}
-            >
-              {/* Speaker Label */}
-              <div className="speaker-label">
-                {isAI ? tutorInfo.name : 'You'}
-              </div>
+            <div key={messageId} className="message-block">
+              {/* === 사용자 메시지 === */}
+              {!isAI && (
+                <>
+                  {/* 원본 발화 (보라색 버블) */}
+                  <div className="user-message-wrapper">
+                    <div className="user-bubble">
+                      <p className="message-text">{content}</p>
 
-              {/* Message Bubble */}
-              <div className={`message-bubble ${isAI ? 'ai' : 'user'}`}>
-                <p className="message-text">{content}</p>
+                      {/* TTS + 교정 버튼 */}
+                      <div className="bubble-actions">
+                        <button
+                          className={`tts-btn ${playingId === messageId ? 'playing' : ''}`}
+                          onClick={() => handleSpeak(content, messageId)}
+                        >
+                          <Volume2 size={16} />
+                        </button>
 
-                {/* AI 메시지: 번역 보기 */}
-                {hasTranslation && (
-                  <button
-                    className="translation-toggle"
-                    onClick={() => toggleTranslation(messageId)}
-                  >
-                    <span>번역 보기</span>
-                    {showTranslation[messageId] ? (
-                      <ChevronUp size={16} />
-                    ) : (
-                      <ChevronDown size={16} />
-                    )}
-                  </button>
-                )}
-
-                {/* 번역 내용 */}
-                {showTranslation[messageId] && message.translation && (
-                  <div className="translation-content">
-                    {message.translation}
-                  </div>
-                )}
-
-                {/* User 메시지: 교정이 있는 경우 */}
-                {!isAI && correction && (
-                  <button
-                    className="correction-toggle"
-                    onClick={() => toggleCorrection(messageId)}
-                  >
-                    <AlertCircle size={14} />
-                    <span>교정 받기</span>
-                    {showCorrection[messageId] ? (
-                      <ChevronUp size={16} />
-                    ) : (
-                      <ChevronDown size={16} />
-                    )}
-                  </button>
-                )}
-
-                {/* 교정 내용 */}
-                {showCorrection[messageId] && correction && (
-                  <div className="correction-content">
-                    <div className="correction-row">
-                      <span className="correction-label">수정 전</span>
-                      <p className="original">{correction.originalText}</p>
-                    </div>
-                    <div className="correction-row">
-                      <span className="correction-label">수정 후</span>
-                      <p className="corrected">{correction.correctedText}</p>
-                    </div>
-                    {correction.explanation && (
-                      <div className="correction-explanation">
-                        <p>{correction.explanation}</p>
+                        {hasDifference && (
+                          <button
+                            className={`correction-btn ${correctionState ? 'active' : ''}`}
+                            onClick={() => requestCorrection(messageId)}
+                            disabled={correctionState === 'loading'}
+                          >
+                            <Sparkles size={14} />
+                            <span>
+                              {correctionState === 'loading' ? '교정 중...' :
+                               correctionState === 'done' ? '교정 숨기기' : '교정 받기'}
+                            </span>
+                          </button>
+                        )}
                       </div>
-                    )}
-                    {correction.translation && (
-                      <div className="correction-translation">
-                        <p>{correction.translation}</p>
-                      </div>
-                    )}
+                    </div>
                   </div>
-                )}
-              </div>
 
-              {/* Audio Button (AI messages only) */}
+                  {/* 교정 박스 - 링글 스타일 (사용자 말풍선과 정렬) */}
+                  {hasDifference && (correctionState === 'loading' || correctionState === 'done') && (
+                    <div className="correction-wrapper">
+                      <span className="correction-arrow">↳</span>
+                      <div className={`correction-bubble ${correctionState}`}>
+                        {correctionState === 'loading' ? (
+                          /* 로딩 애니메이션 - 연필 */
+                          <div className="correction-loading">
+                            <Pencil size={18} className="pen-animation" />
+                          </div>
+                        ) : (
+                          /* 교정 완료 */
+                          <>
+                            <p className="corrected-text">{correctedText}</p>
+                            <p className="grammar-explanation">{grammarExplanation}</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 턴/단어 카운트 */}
+                  <div className="turn-count">
+                    {getUserTurnNumber(index)} 턴 — {getCumulativeWordCount(index)}단어
+                  </div>
+                </>
+              )}
+
+              {/* === AI 메시지 === */}
               {isAI && (
-                <button
-                  className={`audio-btn ${playingId === messageId ? 'playing' : ''}`}
-                  onClick={() => handleSpeak(content, messageId)}
-                  disabled={playingId === messageId}
-                >
-                  <Volume2 size={18} />
-                </button>
+                <div className="ai-message-wrapper">
+                  <div className="ai-bubble">
+                    <p className="message-text">{content}</p>
+
+                    {/* 번역 보기 */}
+                    <button
+                      className="translation-btn"
+                      onClick={() => toggleTranslation(messageId)}
+                    >
+                      번역 보기
+                    </button>
+
+                    {/* TTS 버튼 */}
+                    <button
+                      className={`ai-tts-btn ${playingId === messageId ? 'playing' : ''}`}
+                      onClick={() => handleSpeak(content, messageId)}
+                    >
+                      <Volume2 size={18} />
+                    </button>
+
+                    {showTranslation[messageId] && (
+                      <p className="translation-text">
+                        {message.translation || '(번역 준비 중...)'}
+                      </p>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           )
         })}
       </div>
 
-      {/* Bottom Actions */}
-      <div className="bottom-actions">
-        <button
-          className="action-btn"
-          onClick={() => navigate('/analysis', { state: { callId, callData } })}
-          disabled={!callData.analysis}
-        >
-          AI 분석 보기
-        </button>
-      </div>
-
-      <style>{`
-        .script-page {
-          min-height: 100vh;
-          background: #f9fafb;
-          padding-bottom: 100px;
-        }
-
-        .script-error {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          min-height: 100vh;
-          gap: 16px;
-        }
-
-        .script-error button {
-          padding: 12px 24px;
-          background: #5046e4;
-          color: white;
-          border-radius: 8px;
-        }
-
-        /* Header */
-        .script-header {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 16px 20px;
-          background: white;
-          border-bottom: 1px solid #e5e7eb;
-          position: sticky;
-          top: 0;
-          z-index: 100;
-        }
-
-        .back-btn {
-          background: none;
-          padding: 4px;
-          color: #374151;
-        }
-
-        .header-info h1 {
-          font-size: 18px;
-          font-weight: 600;
-          color: #1f2937;
-        }
-
-        .header-date {
-          font-size: 13px;
-          color: #6b7280;
-          margin-top: 2px;
-        }
-
-        /* Tutor Banner */
-        .tutor-banner {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 16px 20px;
-          background: white;
-          border-bottom: 1px solid #e5e7eb;
-        }
-
-        .tutor-avatar {
-          width: 40px;
-          height: 40px;
-          background: #8b5cf6;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .tutor-avatar span {
-          color: white;
-          font-size: 18px;
-          font-weight: 600;
-        }
-
-        .tutor-name {
-          font-size: 16px;
-          font-weight: 600;
-          color: #1f2937;
-        }
-
-        .tutor-tag {
-          font-size: 13px;
-          color: #6b7280;
-          background: #f3f4f6;
-          padding: 4px 10px;
-          border-radius: 12px;
-        }
-
-        /* Messages Container */
-        .messages-container {
-          padding: 20px;
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-
-        /* Message Wrapper */
-        .message-wrapper {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .message-wrapper.ai {
-          align-items: flex-start;
-        }
-
-        .message-wrapper.user {
-          align-items: flex-end;
-        }
-
-        /* Speaker Label */
-        .speaker-label {
-          font-size: 13px;
-          font-weight: 500;
-          color: #6b7280;
-          padding: 0 4px;
-        }
-
-        /* Message Bubble */
-        .message-bubble {
-          max-width: 85%;
-          padding: 14px 16px;
-          border-radius: 16px;
-          position: relative;
-        }
-
-        .message-bubble.ai {
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-top-left-radius: 4px;
-        }
-
-        .message-bubble.user {
-          background: #5046e4;
-          color: white;
-          border-top-right-radius: 4px;
-        }
-
-        .message-text {
-          font-size: 15px;
-          line-height: 1.6;
-        }
-
-        /* Translation Toggle */
-        .translation-toggle {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          margin-top: 12px;
-          padding: 8px 12px;
-          background: #f3f4f6;
-          border-radius: 8px;
-          font-size: 13px;
-          color: #5046e4;
-          font-weight: 500;
-        }
-
-        .translation-content {
-          margin-top: 12px;
-          padding: 12px;
-          background: #f9fafb;
-          border-radius: 8px;
-          font-size: 14px;
-          color: #374151;
-          line-height: 1.6;
-        }
-
-        /* Correction Toggle */
-        .correction-toggle {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          margin-top: 12px;
-          padding: 8px 12px;
-          background: rgba(255, 255, 255, 0.2);
-          border-radius: 8px;
-          font-size: 13px;
-          color: white;
-          font-weight: 500;
-        }
-
-        .correction-content {
-          margin-top: 12px;
-          padding: 12px;
-          background: rgba(255, 255, 255, 0.15);
-          border-radius: 8px;
-        }
-
-        .correction-row {
-          margin-bottom: 12px;
-        }
-
-        .correction-row:last-child {
-          margin-bottom: 0;
-        }
-
-        .correction-label {
-          display: block;
-          font-size: 11px;
-          font-weight: 600;
-          color: rgba(255, 255, 255, 0.7);
-          margin-bottom: 4px;
-        }
-
-        .correction-row .original {
-          font-size: 14px;
-          color: rgba(255, 255, 255, 0.8);
-          text-decoration: line-through;
-        }
-
-        .correction-row .corrected {
-          font-size: 14px;
-          color: white;
-          font-weight: 500;
-        }
-
-        .correction-explanation {
-          margin-top: 12px;
-          padding: 10px;
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 6px;
-        }
-
-        .correction-explanation p {
-          font-size: 13px;
-          color: rgba(255, 255, 255, 0.9);
-          line-height: 1.5;
-        }
-
-        .correction-translation {
-          margin-top: 8px;
-        }
-
-        .correction-translation p {
-          font-size: 13px;
-          color: rgba(255, 255, 255, 0.7);
-          font-style: italic;
-        }
-
-        /* Audio Button */
-        .audio-btn {
-          width: 36px;
-          height: 36px;
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: #6b7280;
-          margin-top: 4px;
-        }
-
-        .audio-btn.playing {
-          background: #5046e4;
-          border-color: #5046e4;
-          color: white;
-        }
-
-        .audio-btn:disabled {
-          opacity: 0.6;
-        }
-
-        /* Bottom Actions */
-        .bottom-actions {
-          position: fixed;
-          bottom: 0;
-          left: 0;
-          right: 0;
-          padding: 16px 20px 32px;
-          background: white;
-          border-top: 1px solid #e5e7eb;
-          max-width: 500px;
-          margin: 0 auto;
-        }
-
-        .action-btn {
-          width: 100%;
-          padding: 16px;
-          background: #5046e4;
-          color: white;
-          border-radius: 12px;
-          font-size: 16px;
-          font-weight: 600;
-        }
-
-        .action-btn:disabled {
-          background: #d1d5db;
-          color: #9ca3af;
-        }
-      `}</style>
+      <style>{styles}</style>
     </div>
   )
 }
+
+const styles = `
+  .script-page {
+    min-height: 100vh;
+    background: white;
+    padding-bottom: 40px;
+  }
+
+  .script-loading,
+  .script-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    gap: 16px;
+    color: #6b7280;
+  }
+
+  .script-loading .spinner {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .script-error button {
+    padding: 12px 24px;
+    background: #5046e4;
+    color: white;
+    border-radius: 8px;
+  }
+
+  /* Header - 링글 스타일 */
+  .script-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: white;
+    border-bottom: 1px solid #e5e7eb;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .back-btn,
+  .settings-btn {
+    background: none;
+    padding: 4px;
+    color: #1f2937;
+  }
+
+  .header-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: #1f2937;
+  }
+
+  /* Messages Container */
+  .messages-container {
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .empty-messages {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: #9ca3af;
+    text-align: center;
+    gap: 16px;
+  }
+
+  .message-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* === 사용자 메시지 (보라색) === */
+  .user-message-wrapper {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .user-bubble {
+    max-width: 85%;
+    background: #7c3aed;
+    color: white;
+    padding: 16px;
+    border-radius: 20px;
+    border-top-right-radius: 4px;
+  }
+
+  .user-bubble .message-text {
+    font-size: 15px;
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+
+  .bubble-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .tts-btn {
+    background: none;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.8);
+  }
+
+  .tts-btn.playing {
+    color: white;
+  }
+
+  .correction-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px;
+    background: none;
+    font-size: 13px;
+    color: rgba(255,255,255,0.8);
+  }
+
+  /* === 교정 박스 (링글 스타일 - 사용자 말풍선과 정렬) === */
+  .correction-wrapper {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .correction-arrow {
+    color: #9ca3af;
+    font-size: 18px;
+    margin-top: 8px;
+    flex-shrink: 0;
+  }
+
+  .correction-bubble {
+    max-width: 85%;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-left: 3px solid #7c3aed;
+    padding: 16px;
+    border-radius: 12px;
+    border-top-left-radius: 0;
+  }
+
+  .correction-bubble.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px;
+    min-width: 200px;
+  }
+
+  .correction-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+  }
+
+  .pen-animation {
+    color: #7c3aed;
+    animation: penWrite 0.8s ease-in-out infinite;
+  }
+
+  @keyframes penWrite {
+    0%, 100% {
+      transform: translateX(0) rotate(0deg);
+    }
+    25% {
+      transform: translateX(4px) rotate(5deg);
+    }
+    50% {
+      transform: translateX(8px) rotate(0deg);
+    }
+    75% {
+      transform: translateX(4px) rotate(-5deg);
+    }
+  }
+
+  .corrected-text {
+    font-size: 15px;
+    line-height: 1.6;
+    color: #7c3aed;
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+
+  .grammar-explanation {
+    font-size: 13px;
+    line-height: 1.7;
+    color: #6b7280;
+  }
+
+  /* 턴/단어 카운트 */
+  .turn-count {
+    text-align: right;
+    font-size: 12px;
+    color: #9ca3af;
+    padding-right: 4px;
+  }
+
+  /* === AI 메시지 (흰색) === */
+  .ai-message-wrapper {
+    display: flex;
+    justify-content: flex-start;
+  }
+
+  .ai-bubble {
+    max-width: 85%;
+    background: #f3f4f6;
+    padding: 16px;
+    border-radius: 20px;
+    border-top-left-radius: 4px;
+  }
+
+  .ai-bubble .message-text {
+    font-size: 15px;
+    line-height: 1.6;
+    color: #1f2937;
+    margin-bottom: 12px;
+  }
+
+  .translation-btn {
+    display: block;
+    background: none;
+    font-size: 13px;
+    color: #5046e4;
+    padding: 4px 0;
+    margin-bottom: 8px;
+  }
+
+  .ai-tts-btn {
+    background: none;
+    padding: 4px 0;
+    display: flex;
+    align-items: center;
+    color: #9ca3af;
+  }
+
+  .ai-tts-btn.playing {
+    color: #5046e4;
+  }
+
+  .translation-text {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #6b7280;
+    padding: 12px;
+    background: #e5e7eb;
+    border-radius: 8px;
+    margin-top: 12px;
+  }
+`
 
 export default Script

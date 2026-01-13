@@ -233,7 +233,7 @@ function Practice() {
     return (
       <div className="practice-page">
         <header className="practice-header">
-          <button className="back-btn" onClick={() => navigate(-1)}>
+          <button className="back-btn" onClick={() => navigate('/', { state: { activeTab: 'history' } })}>
             <ArrowLeft size={24} />
           </button>
           <h1>연습 완료</h1>
@@ -289,7 +289,7 @@ function Practice() {
     <div className="practice-page">
       {/* Header */}
       <header className="practice-header">
-        <button className="back-btn" onClick={() => navigate(-1)}>
+        <button className="back-btn" onClick={() => navigate('/', { state: { activeTab: 'history' } })}>
           <ArrowLeft size={24} />
         </button>
         <h1>표현 연습</h1>

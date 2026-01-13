@@ -4,7 +4,10 @@ import re
 import base64
 import time
 import urllib.request
+import hashlib
+import hmac
 from datetime import datetime, timedelta
+from urllib.parse import quote
 
 # AWS 클라이언트
 bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
@@ -75,20 +78,29 @@ def validate_required(body, *fields):
 # 모델 설정
 CLAUDE_MODEL = 'anthropic.claude-3-haiku-20240307-v1:0'
 
-# 시스템 프롬프트
-SYSTEM_PROMPT = """You are Emma, a friendly AI English tutor making a phone call to help the student practice English conversation.
+# 시스템 프롬프트 (링글 스타일)
+SYSTEM_PROMPT = """You are a friendly English conversation partner on a phone call.
 
-Guidelines:
+CRITICAL RULES:
+1. Keep responses SHORT: 1-2 sentences only
+2. ALWAYS end with a simple follow-up question
+3. NEVER re-introduce yourself after the first message
+4. NEVER say "Hello", "Hi there", or greet again after the conversation has started
+5. Focus on the CONTENT of what the user said, not their grammar
+6. Be warm and natural, like a friend chatting
+
+Context:
 - Accent: {accent}
-- Difficulty Level: {level}
+- Level: {level}
 - Topic: {topic}
-- Keep responses natural and conversational (2-3 sentences max)
-- Ask follow-up questions to keep the conversation flowing
-- Gently correct major grammar errors when appropriate
-- Be encouraging and supportive
-- Respond in English only
 
-If this is the first message, greet the student warmly and ask them a simple opening question related to the topic."""
+Response style examples:
+- "That sounds interesting! What made you choose that career?"
+- "Oh nice! Do you do that often?"
+- "I see. What do you enjoy most about it?"
+
+Only for the VERY FIRST message: Give a brief, friendly greeting and ask ONE simple question about the topic.
+After that: NO greetings, NO introductions, just continue the conversation naturally."""
 
 # 분석용 프롬프트
 ANALYSIS_PROMPT = """Analyze the following English conversation between a student and an AI tutor.
@@ -145,6 +157,7 @@ ACTION_HANDLERS = {
     'get_sessions': 'handle_get_sessions',
     'get_session_detail': 'handle_get_session_detail',
     'delete_session': 'handle_delete_session',
+    'get_transcribe_url': 'handle_get_transcribe_url',
 }
 
 
@@ -520,45 +533,60 @@ def handle_get_sessions(body):
     last_key = body.get('lastKey')
 
     try:
-        query_params = {
-            'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
-            'FilterExpression': '#type = :type_meta',
-            'ExpressionAttributeNames': {'#type': 'type'},
-            'ExpressionAttributeValues': {
-                ':pk': f'DEVICE#{device_id}',
-                ':sk_prefix': 'SESSION#',
-                ':type_meta': 'SESSION_META'
-            },
-            'Limit': limit * 2,
-            'ScanIndexForward': False
-        }
-
-        if last_key:
-            query_params['ExclusiveStartKey'] = last_key
-
-        response = get_table().query(**query_params)
-
+        table = get_table()
         sessions = []
-        for item in response.get('Items', []):
-            if item.get('type') == 'SESSION_META':
-                sessions.append({
-                    'sessionId': item.get('sessionId'),
-                    'tutorName': item.get('tutorName'),
-                    'topic': item.get('topic', 'daily'),
-                    'accent': item.get('accent', 'us'),
-                    'level': item.get('level', 'intermediate'),
-                    'startedAt': item.get('startedAt'),
-                    'endedAt': item.get('endedAt'),
-                    'duration': int(item.get('duration', 0)),
-                    'turnCount': int(item.get('turnCount', 0)),
-                    'wordCount': int(item.get('wordCount', 0)),
-                    'status': item.get('status')
-                })
-                if len(sessions) >= limit:
-                    break
+        current_key = last_key
+        max_iterations = 10  # Safety limit to prevent infinite loops
 
-        next_key = response.get('LastEvaluatedKey')
-        return success_response({'sessions': sessions, 'lastKey': next_key, 'hasMore': next_key is not None})
+        # Loop until we have enough sessions or no more data
+        for _ in range(max_iterations):
+            query_params = {
+                'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+                'FilterExpression': '#type = :type_meta',
+                'ExpressionAttributeNames': {'#type': 'type'},
+                'ExpressionAttributeValues': {
+                    ':pk': f'DEVICE#{device_id}',
+                    ':sk_prefix': 'SESSION#',
+                    ':type_meta': 'SESSION_META'
+                },
+                'Limit': 100,  # Fetch more items per query to find SESSION_META items
+                'ScanIndexForward': False
+            }
+
+            if current_key:
+                query_params['ExclusiveStartKey'] = current_key
+
+            response = table.query(**query_params)
+
+            for item in response.get('Items', []):
+                if item.get('type') == 'SESSION_META':
+                    sessions.append({
+                        'sessionId': item.get('sessionId'),
+                        'tutorName': item.get('tutorName'),
+                        'topic': item.get('topic', 'daily'),
+                        'accent': item.get('accent', 'us'),
+                        'level': item.get('level', 'intermediate'),
+                        'startedAt': item.get('startedAt'),
+                        'endedAt': item.get('endedAt'),
+                        'duration': int(item.get('duration', 0)),
+                        'turnCount': int(item.get('turnCount', 0)),
+                        'wordCount': int(item.get('wordCount', 0)),
+                        'status': item.get('status')
+                    })
+                    if len(sessions) >= limit:
+                        break
+
+            current_key = response.get('LastEvaluatedKey')
+
+            # Stop if we have enough sessions or no more data
+            if len(sessions) >= limit or not current_key:
+                break
+
+        # Sort by startedAt descending (newest first)
+        sessions.sort(key=lambda x: x.get('startedAt', ''), reverse=True)
+        sessions = sessions[:limit]  # Trim to requested limit
+
+        return success_response({'sessions': sessions, 'lastKey': current_key, 'hasMore': current_key is not None})
     except Exception as e:
         print(f"Get sessions error: {str(e)}")
         return error_response(str(e), 500)
@@ -644,4 +672,115 @@ def handle_delete_session(body):
         return success_response({'success': True, 'deletedCount': len(items)})
     except Exception as e:
         print(f"Delete session error: {str(e)}")
+        return error_response(str(e), 500)
+
+
+# ============================================
+# Transcribe Streaming 핸들러
+# ============================================
+
+def handle_get_transcribe_url(body):
+    """AWS Transcribe Streaming용 Presigned WebSocket URL 생성"""
+    language = body.get('language', 'en-US')
+    sample_rate = body.get('sampleRate', 16000)
+
+    try:
+        # AWS 자격증명 가져오기 (Lambda 환경에서 자동 제공)
+        session = boto3.Session()
+        credentials = session.get_credentials()
+        access_key = credentials.access_key
+        secret_key = credentials.secret_key
+        session_token = credentials.token  # Lambda는 임시 자격증명 사용
+
+        region = 'us-east-1'
+        service = 'transcribe'
+        host = f'transcribestreaming.{region}.amazonaws.com'
+        endpoint = f'{host}:8443'
+
+        # 현재 시간 (UTC)
+        t = datetime.utcnow()
+        amz_date = t.strftime('%Y%m%dT%H%M%SZ')
+        date_stamp = t.strftime('%Y%m%d')
+
+        # Credential scope
+        credential_scope = f'{date_stamp}/{region}/{service}/aws4_request'
+        algorithm = 'AWS4-HMAC-SHA256'
+
+        # 모든 쿼리 파라미터 (알파벳 순서 - X-Amz-* 포함)
+        # Presigned URL에서는 서명 파라미터도 canonical querystring에 포함
+        all_params = {
+            'X-Amz-Algorithm': algorithm,
+            'X-Amz-Credential': f'{access_key}/{credential_scope}',
+            'X-Amz-Date': amz_date,
+            'X-Amz-Expires': '300',
+            'X-Amz-SignedHeaders': 'host',
+            'language-code': language,
+            'media-encoding': 'pcm',
+            'sample-rate': str(sample_rate),
+        }
+
+        # Security Token 추가 (Lambda 임시 자격증명)
+        if session_token:
+            all_params['X-Amz-Security-Token'] = session_token
+
+        # Canonical Query String (알파벳 순서, 서명 제외)
+        canonical_querystring = '&'.join([
+            f'{quote(k, safe="")}={quote(str(v), safe="")}'
+            for k, v in sorted(all_params.items())
+        ])
+
+        # Canonical Headers
+        canonical_headers = f'host:{endpoint}\n'
+        signed_headers = 'host'
+
+        # Payload Hash (빈 문자열의 SHA256)
+        payload_hash = hashlib.sha256(b'').hexdigest()
+
+        # Canonical Request
+        canonical_request = '\n'.join([
+            'GET',
+            '/stream-transcription-websocket',
+            canonical_querystring,
+            canonical_headers,
+            signed_headers,
+            payload_hash
+        ])
+
+        # String to Sign
+        string_to_sign = '\n'.join([
+            algorithm,
+            amz_date,
+            credential_scope,
+            hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()
+        ])
+
+        # Signing Key 생성
+        def sign(key, msg):
+            return hmac.new(key, msg.encode('utf-8'), hashlib.sha256).digest()
+
+        k_date = sign(('AWS4' + secret_key).encode('utf-8'), date_stamp)
+        k_region = sign(k_date, region)
+        k_service = sign(k_region, service)
+        k_signing = sign(k_service, 'aws4_request')
+
+        # Signature 계산
+        signature = hmac.new(k_signing, string_to_sign.encode('utf-8'), hashlib.sha256).hexdigest()
+
+        # 최종 URL 생성 (서명 추가)
+        signed_url = (
+            f'wss://{endpoint}/stream-transcription-websocket'
+            f'?{canonical_querystring}'
+            f'&X-Amz-Signature={signature}'
+        )
+
+        return success_response({
+            'url': signed_url,
+            'region': region,
+            'language': language,
+            'sampleRate': sample_rate,
+            'expiresIn': 300
+        })
+
+    except Exception as e:
+        print(f"Get transcribe URL error: {str(e)}")
         return error_response(str(e), 500)

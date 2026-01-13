@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Mic, MicOff, Volume2, VolumeX, Captions, X } from 'lucide-react'
-import { sendMessage, textToSpeech, playAudioBase64 } from '../utils/api'
+import { sendMessage, textToSpeech, playAudioBase64, speechToText, startSession, endSession, saveMessage } from '../utils/api'
+import { getDeviceId } from '../utils/helpers'
+import { TranscribeStreamingClient } from '../utils/transcribeStreaming'
 
 // 자막 설정 옵션
 const SUBTITLE_OPTIONS = [
@@ -22,10 +24,9 @@ const SUBTITLE_BUTTON_LABELS = {
 // AI 응답에서 톤 지시어 제거 (예: *in a friendly tone*)
 const cleanSubtitleText = (text) => {
   if (!text) return ''
-  // *...* 패턴 제거 (톤 지시어)
   return text
-    .replace(/\*[^*]+\*\s*/g, '')  // *in a friendly tone* 등 제거
-    .replace(/^\s+/, '')           // 앞 공백 제거
+    .replace(/\*[^*]+\*\s*/g, '')
+    .replace(/^\s+/, '')
     .trim()
 }
 
@@ -35,9 +36,10 @@ function Call() {
   const [isListening, setIsListening] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isProcessingSTT, setIsProcessingSTT] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
-  const [isSpeakerOn, setIsSpeakerOn] = useState(true) // 스피커 on/off
-  const [subtitleMode, setSubtitleMode] = useState('all') // all, english, translation, off
+  const [isSpeakerOn, setIsSpeakerOn] = useState(true)
+  const [subtitleMode, setSubtitleMode] = useState('all')
   const [showSubtitleModal, setShowSubtitleModal] = useState(false)
   const [messages, setMessages] = useState([])
   const [interimTranscript, setInterimTranscript] = useState('')
@@ -45,16 +47,62 @@ function Call() {
   const [currentTranslation, setCurrentTranslation] = useState('')
   const [turnCount, setTurnCount] = useState(0)
   const [wordCount, setWordCount] = useState(0)
+  const [sttMode, setSttMode] = useState('streaming') // 'streaming' | 'transcribe' | 'browser'
+  const [userSpeaking, setUserSpeaking] = useState(false) // 사용자가 말하는 중인지
+  const [streamingText, setStreamingText] = useState('') // 실시간 스트리밍 텍스트
+
+  // 세션 관리 (DynamoDB 저장용)
+  const [sessionId] = useState(() => crypto.randomUUID())
+  const deviceId = getDeviceId()
+  const sessionStartedRef = useRef(false)
 
   const timerRef = useRef(null)
   const recognitionRef = useRef(null)
   const audioRef = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const audioChunksRef = useRef([])
+  const silenceTimerRef = useRef(null)
+  const streamRef = useRef(null)
+
+  // VAD (Voice Activity Detection) refs
+  const audioContextRef = useRef(null)
+  const analyserRef = useRef(null)
+  const vadIntervalRef = useRef(null)
+  const lastSpeechTimeRef = useRef(Date.now())
+  const isSpeakingUserRef = useRef(false) // 사용자가 현재 말하고 있는지
+
+  // Streaming STT refs
+  const streamingClientRef = useRef(null)
+  const streamingStreamRef = useRef(null) // Streaming용 별도 MediaStream
+  const finalTranscriptRef = useRef('') // 최종 확정 텍스트
+  const silenceAfterSpeechTimerRef = useRef(null) // 말 끝난 후 침묵 타이머
+
+  // Refs for closure-safe state access
+  const isListeningRef = useRef(false)
+  const isMutedRef = useRef(false)
+  const isProcessingSTTRef = useRef(false)
+  const sttModeRef = useRef('transcribe')
+  const conversationStartedRef = useRef(false) // Prevent double start in StrictMode
+  const audioInitializedRef = useRef(false) // Prevent double audio init in StrictMode
 
   // 설정 로드
   const settings = JSON.parse(localStorage.getItem('tutorSettings') || '{}')
   const gender = settings.gender || 'female'
   const tutorName = gender === 'male' ? 'James' : 'Gwen'
   const tutorInitial = tutorName[0]
+
+  // VAD 설정
+  const VAD_THRESHOLD = 15 // 음성 감지 임계값 (0-255, 낮을수록 민감)
+  const SILENCE_DURATION = 1500 // 침묵으로 판단하는 시간 (ms) - 1.5초
+  const MIN_SPEECH_DURATION = 500 // 최소 발화 시간 (ms) - 너무 짧은 소음 무시
+  const MAX_RECORDING_TIME = 60000 // 최대 녹음 시간 60초 (안전장치)
+  const maxRecordingTimerRef = useRef(null)
+
+  // Sync refs with state (for closure-safe access)
+  useEffect(() => { isListeningRef.current = isListening }, [isListening])
+  useEffect(() => { isMutedRef.current = isMuted }, [isMuted])
+  useEffect(() => { isProcessingSTTRef.current = isProcessingSTT }, [isProcessingSTT])
+  useEffect(() => { sttModeRef.current = sttMode }, [sttMode])
 
   // 타이머
   useEffect(() => {
@@ -64,8 +112,49 @@ function Call() {
     return () => clearInterval(timerRef.current)
   }, [])
 
-  // Web Speech API 초기화
+  // 마이크 및 음성 인식 초기화 (StrictMode에서 중복 초기화 방지)
   useEffect(() => {
+    if (audioInitializedRef.current) return
+    audioInitializedRef.current = true
+    initializeAudio()
+    return () => {
+      cleanupAudio()
+    }
+  }, [])
+
+  const initializeAudio = async () => {
+    // 마이크 스트림 초기화 + VAD 설정
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 16000,
+        }
+      })
+      streamRef.current = stream
+      console.log('[STT] Microphone stream initialized')
+
+      // VAD용 AudioContext 및 Analyser 설정
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+      audioContextRef.current = audioContext
+
+      const analyser = audioContext.createAnalyser()
+      analyser.fftSize = 512
+      analyser.smoothingTimeConstant = 0.5
+      analyserRef.current = analyser
+
+      const source = audioContext.createMediaStreamSource(stream)
+      source.connect(analyser)
+
+      console.log('[VAD] Audio analyser initialized')
+    } catch (err) {
+      console.error('[STT] Microphone access error:', err)
+      setSttMode('browser') // 마이크 접근 실패 시 브라우저 STT로 폴백
+    }
+
+    // 2. Web Speech API 초기화 (실시간 중간 결과용)
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
       recognitionRef.current = new SpeechRecognition()
@@ -86,10 +175,17 @@ function Call() {
           }
         }
 
-        // 중간 결과 표시
-        setInterimTranscript(interim)
+        // 중간 결과 표시 (실시간 피드백)
+        setInterimTranscript(interim || finalTranscript)
 
-        if (finalTranscript) {
+        // 음성 인식 결과가 있으면 마지막 발화 시간 업데이트 (VAD 보조)
+        if (interim || finalTranscript) {
+          lastSpeechTimeRef.current = Date.now()
+          isSpeakingUserRef.current = true
+        }
+
+        // 브라우저 STT 모드에서는 최종 결과를 바로 사용 (use ref for closure safety)
+        if (sttModeRef.current === 'browser' && finalTranscript) {
           setInterimTranscript('')
           handleUserSpeech(finalTranscript)
         }
@@ -97,27 +193,368 @@ function Call() {
 
       recognitionRef.current.onerror = (event) => {
         console.error('Speech recognition error:', event.error)
-        if (event.error !== 'no-speech') {
-          setIsListening(false)
+        if (event.error === 'not-allowed') {
+          setSttMode('browser')
+        }
+      }
+
+      recognitionRef.current.onend = () => {
+        // 자동 재시작 (듣기 모드일 때) - use refs for closure safety
+        if (isListeningRef.current && !isMutedRef.current && !isProcessingSTTRef.current) {
+          try {
+            recognitionRef.current.start()
+          } catch (e) {
+            console.log('Recognition restart skipped')
+          }
         }
       }
     }
+  }
 
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.abort()
+  const cleanupAudio = () => {
+    // Streaming STT 정리
+    if (streamingClientRef.current) {
+      streamingClientRef.current.stop()
+      streamingClientRef.current = null
+    }
+    if (streamingStreamRef.current) {
+      streamingStreamRef.current.getTracks().forEach(track => track.stop())
+      streamingStreamRef.current = null
+    }
+    if (silenceAfterSpeechTimerRef.current) {
+      clearTimeout(silenceAfterSpeechTimerRef.current)
+    }
+
+    if (recognitionRef.current) {
+      recognitionRef.current.abort()
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+    }
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current)
+    }
+    if (maxRecordingTimerRef.current) {
+      clearTimeout(maxRecordingTimerRef.current)
+    }
+    // VAD 정리
+    if (vadIntervalRef.current) {
+      clearInterval(vadIntervalRef.current)
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+    }
+  }
+
+  // VAD 모니터링 시작
+  const startVADMonitoring = () => {
+    if (!analyserRef.current) {
+      console.log('[VAD] Analyser not available')
+      return
+    }
+
+    // 기존 VAD 인터벌 정리
+    if (vadIntervalRef.current) {
+      clearInterval(vadIntervalRef.current)
+    }
+
+    lastSpeechTimeRef.current = Date.now()
+    isSpeakingUserRef.current = false
+    let speechStartTime = null
+
+    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
+
+    vadIntervalRef.current = setInterval(() => {
+      if (!isListeningRef.current || isProcessingSTTRef.current) {
+        return
+      }
+
+      analyserRef.current.getByteFrequencyData(dataArray)
+
+      // 평균 볼륨 계산
+      let sum = 0
+      for (let i = 0; i < dataArray.length; i++) {
+        sum += dataArray[i]
+      }
+      const average = sum / dataArray.length
+
+      const now = Date.now()
+
+      // 음성 감지됨 (임계값 초과)
+      if (average > VAD_THRESHOLD) {
+        if (!isSpeakingUserRef.current) {
+          console.log('[VAD] Speech started, level:', average.toFixed(1))
+          speechStartTime = now
+          setUserSpeaking(true) // UI 업데이트
+        }
+        isSpeakingUserRef.current = true
+        lastSpeechTimeRef.current = now
+      } else {
+        // 음성 감지 안됨
+        const silenceTime = now - lastSpeechTimeRef.current
+
+        // 충분히 말한 후 침묵이 지속되면 녹음 중지
+        if (isSpeakingUserRef.current && silenceTime > SILENCE_DURATION) {
+          const speechDuration = speechStartTime ? (lastSpeechTimeRef.current - speechStartTime) : 0
+
+          // 최소 발화 시간을 넘었을 때만 처리
+          if (speechDuration >= MIN_SPEECH_DURATION) {
+            console.log('[VAD] Silence detected after', speechDuration, 'ms of speech. Stopping...')
+            isSpeakingUserRef.current = false
+            setUserSpeaking(false) // UI 업데이트
+            stopRecordingAndProcess()
+          } else {
+            // 너무 짧은 소음은 무시하고 계속 듣기
+            console.log('[VAD] Short noise ignored, duration:', speechDuration, 'ms')
+            isSpeakingUserRef.current = false
+            setUserSpeaking(false) // UI 업데이트
+            lastSpeechTimeRef.current = now
+          }
+        }
+      }
+    }, 100) // 100ms마다 체크
+
+    console.log('[VAD] Monitoring started')
+  }
+
+  // VAD 모니터링 중지
+  const stopVADMonitoring = () => {
+    if (vadIntervalRef.current) {
+      clearInterval(vadIntervalRef.current)
+      vadIntervalRef.current = null
+    }
+    isSpeakingUserRef.current = false
+    setUserSpeaking(false) // UI 업데이트
+    console.log('[VAD] Monitoring stopped')
+  }
+
+  // ============================================
+  // Streaming STT 함수들
+  // ============================================
+
+  // Streaming STT 시작
+  const startStreamingSTT = async () => {
+    if (streamingClientRef.current) {
+      console.log('[Streaming] Already running, stopping first...')
+      await stopStreamingSTT()
+    }
+
+    try {
+      console.log('[Streaming] Starting...')
+      finalTranscriptRef.current = ''
+      setStreamingText('')
+      setInterimTranscript('')
+
+      // 마이크 스트림 생성
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 16000,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      })
+      streamingStreamRef.current = stream
+
+      // Transcribe Streaming 클라이언트 생성
+      const client = new TranscribeStreamingClient({
+        language: 'en-US',
+        sampleRate: 16000,
+        onPartialTranscript: (text) => {
+          // 실시간 부분 결과 (UI 업데이트)
+          setStreamingText(text)
+          setInterimTranscript(text)
+          setUserSpeaking(true)
+
+          // 음성이 감지되면 타이머 리셋
+          lastSpeechTimeRef.current = Date.now()
+          isSpeakingUserRef.current = true
+
+          // 침묵 타이머 리셋
+          if (silenceAfterSpeechTimerRef.current) {
+            clearTimeout(silenceAfterSpeechTimerRef.current)
+          }
+        },
+        onTranscript: (text) => {
+          // 최종 확정 결과
+          console.log('[Streaming] Final transcript:', text)
+          if (text && text.trim()) {
+            finalTranscriptRef.current = text.trim()
+
+            // 최종 결과가 오면 잠시 후 처리 (추가 발화 대기)
+            if (silenceAfterSpeechTimerRef.current) {
+              clearTimeout(silenceAfterSpeechTimerRef.current)
+            }
+            silenceAfterSpeechTimerRef.current = setTimeout(() => {
+              if (finalTranscriptRef.current) {
+                const finalText = finalTranscriptRef.current
+                finalTranscriptRef.current = ''
+                processStreamingResult(finalText)
+              }
+            }, 1200) // 1.2초 대기 후 처리
+          }
+        },
+        onError: (error) => {
+          console.error('[Streaming] Error:', error)
+          // 스트리밍 실패 시 batch 모드로 폴백
+          setSttMode('transcribe')
+          stopStreamingSTT()
+          startListening()
+        },
+        onClose: () => {
+          console.log('[Streaming] Connection closed')
+        },
+        onOpen: () => {
+          console.log('[Streaming] Connection opened')
+          setIsListening(true)
+        },
+      })
+
+      streamingClientRef.current = client
+      await client.start(stream)
+
+    } catch (error) {
+      console.error('[Streaming] Start error:', error)
+      // 폴백: batch Transcribe 모드로 전환
+      setSttMode('transcribe')
+      startListening()
+    }
+  }
+
+  // Streaming STT 중지
+  const stopStreamingSTT = async () => {
+    console.log('[Streaming] Stopping...')
+
+    if (silenceAfterSpeechTimerRef.current) {
+      clearTimeout(silenceAfterSpeechTimerRef.current)
+      silenceAfterSpeechTimerRef.current = null
+    }
+
+    if (streamingClientRef.current) {
+      streamingClientRef.current.stop()
+      streamingClientRef.current = null
+    }
+
+    if (streamingStreamRef.current) {
+      streamingStreamRef.current.getTracks().forEach(track => track.stop())
+      streamingStreamRef.current = null
+    }
+
+    setIsListening(false)
+    setUserSpeaking(false)
+    setStreamingText('')
+  }
+
+  // Streaming 결과 처리
+  const processStreamingResult = async (text) => {
+    if (!text || !text.trim()) {
+      // 텍스트가 없으면 다시 듣기
+      startStreamingSTT()
+      return
+    }
+
+    console.log('[Streaming] Processing result:', text)
+
+    // 스트리밍 중지
+    await stopStreamingSTT()
+
+    // UI 업데이트
+    setInterimTranscript('')
+    setStreamingText('')
+
+    // 사용자 발화 처리
+    await handleUserSpeech(text)
+  }
+
+  // AWS Transcribe Batch로 처리
+  const processWithTranscribe = async (audioBlob) => {
+    setIsProcessingSTT(true)
+    setInterimTranscript('음성 인식 중...')
+
+    try {
+      console.log('[STT] Sending audio to AWS Transcribe, size:', audioBlob.size)
+      const result = await speechToText(audioBlob, 'en-US')
+
+      // 처리 완료 - handleUserSpeech 호출 전에 플래그 해제
+      setIsProcessingSTT(false)
+      setInterimTranscript('')
+
+      if (result.transcript && result.transcript.trim()) {
+        console.log('[STT] Transcribe result:', result.transcript)
+        await handleUserSpeech(result.transcript.trim())
+      } else {
+        console.log('[STT] No transcript returned, restarting...')
+        startListening()
+      }
+    } catch (err) {
+      console.error('[STT] Transcribe error:', err)
+      setIsProcessingSTT(false)
+      setInterimTranscript('')
+      // Transcribe 실패 시 브라우저 STT로 폴백
+      setSttMode('browser')
+      startListening()
+    }
+  }
+
+  // 녹음 중지 및 처리
+  const stopRecordingAndProcess = () => {
+    console.log('[STT] stopRecordingAndProcess called')
+
+    // VAD 모니터링 중지
+    stopVADMonitoring()
+
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current)
+    }
+    if (maxRecordingTimerRef.current) {
+      clearTimeout(maxRecordingTimerRef.current)
+    }
+
+    // MediaRecorder 중지 → onstop에서 처리
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      console.log('[STT] Stopping MediaRecorder, chunks:', audioChunksRef.current.length)
+      mediaRecorderRef.current.stop()
+    } else {
+      console.log('[STT] MediaRecorder not recording, state:', mediaRecorderRef.current?.state)
+    }
+
+    // Web Speech API도 중지
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop()
+      } catch (e) {
+        console.log('[STT] Recognition stop error:', e)
       }
     }
-  }, [])
 
-  // 첫 인사 시작
+    setIsListening(false)
+  }
+
+  // 첫 인사 시작 (StrictMode에서 중복 실행 방지)
   useEffect(() => {
+    if (conversationStartedRef.current) return
+    conversationStartedRef.current = true
     startConversation()
   }, [])
 
   const startConversation = async () => {
     setIsLoading(true)
     try {
+      // 1. DynamoDB에 세션 시작 기록
+      if (!sessionStartedRef.current) {
+        sessionStartedRef.current = true
+        try {
+          await startSession(deviceId, sessionId, settings, tutorName)
+          console.log('[DB] Session started:', sessionId)
+        } catch (dbErr) {
+          console.error('[DB] Failed to start session:', dbErr)
+        }
+      }
+
+      // 2. AI 응답 받기
       const response = await sendMessage([], settings)
       const aiMessage = {
         role: 'assistant',
@@ -126,12 +563,26 @@ function Call() {
       }
       setMessages([aiMessage])
       setCurrentSubtitle(response.message)
+
+      // 3. 첫 AI 메시지 DynamoDB에 저장
+      try {
+        await saveMessage(deviceId, sessionId, {
+          role: 'assistant',
+          content: response.message,
+          turnNumber: 0
+        })
+        console.log('[DB] First AI message saved')
+      } catch (dbErr) {
+        console.error('[DB] Failed to save message:', dbErr)
+      }
+
       await speakText(response.message)
     } catch (err) {
       console.error('Start conversation error:', err)
       const mockMessage = "Hello! This is " + tutorName + ". How are you doing today?"
       setMessages([{ speaker: 'ai', content: mockMessage }])
       setCurrentSubtitle(mockMessage)
+      await speakText(mockMessage)
     } finally {
       setIsLoading(false)
     }
@@ -141,12 +592,11 @@ function Call() {
     setIsSpeaking(true)
     setCurrentSubtitle(text)
 
-    // 스피커가 꺼져 있으면 음성 재생 건너뛰기
     if (!isSpeakerOn) {
       setTimeout(() => {
         setIsSpeaking(false)
         startListening()
-      }, 1000) // 잠시 대기 후 리스닝 시작
+      }, 1000)
       return
     }
 
@@ -180,21 +630,126 @@ function Call() {
   }
 
   const startListening = () => {
-    if (recognitionRef.current && !isMuted) {
-      setIsListening(true)
+    if (isMutedRef.current || isProcessingSTTRef.current) {
+      console.log('[STT] startListening blocked - muted:', isMutedRef.current, 'processing:', isProcessingSTTRef.current)
+      return
+    }
+
+    console.log('[STT] startListening - mode:', sttModeRef.current)
+
+    // Streaming 모드인 경우 별도 처리
+    if (sttModeRef.current === 'streaming') {
+      startStreamingSTT()
+      return
+    }
+
+    setIsListening(true)
+    audioChunksRef.current = []
+
+    // MediaRecorder 새로 생성 (한번 stop된 MediaRecorder는 재사용 불가)
+    if (streamRef.current && sttModeRef.current === 'transcribe') {
       try {
-        recognitionRef.current.start()
+        const mediaRecorder = new MediaRecorder(streamRef.current, {
+          mimeType: 'audio/webm;codecs=opus'
+        })
+        mediaRecorderRef.current = mediaRecorder
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data)
+          }
+        }
+
+        mediaRecorder.onstop = async () => {
+          console.log('[STT] MediaRecorder stopped, chunks:', audioChunksRef.current.length)
+          if (audioChunksRef.current.length > 0) {
+            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+            console.log('[STT] Audio blob size:', audioBlob.size, 'bytes')
+            audioChunksRef.current = []
+
+            if (sttModeRef.current === 'transcribe' && audioBlob.size > 1000) {
+              console.log('[STT] Sending to Transcribe...')
+              await processWithTranscribe(audioBlob)
+            } else {
+              console.log('[STT] Skipped - mode:', sttModeRef.current, 'size:', audioBlob.size)
+              startListening()
+            }
+          } else {
+            console.log('[STT] No audio chunks, restarting')
+            startListening()
+          }
+        }
+
+        mediaRecorder.start(500)
+        console.log('[STT] MediaRecorder started (new instance)')
       } catch (err) {
-        console.error('Recognition start error:', err)
+        console.error('[STT] MediaRecorder create error:', err)
       }
     }
+
+    // Web Speech API 시작 (실시간 피드백용)
+    if (recognitionRef.current) {
+      try {
+        // 이미 실행 중이면 먼저 중지
+        recognitionRef.current.abort()
+        setTimeout(() => {
+          try {
+            recognitionRef.current.start()
+            console.log('[STT] SpeechRecognition started')
+          } catch (e) {
+            console.log('[STT] Recognition already running')
+          }
+        }, 100)
+      } catch (err) {
+        console.error('[STT] Recognition start error:', err)
+      }
+    }
+
+    // VAD 모니터링 시작 (실시간 음성 감지)
+    startVADMonitoring()
+
+    // 최대 녹음 시간 안전장치 (60초)
+    if (maxRecordingTimerRef.current) {
+      clearTimeout(maxRecordingTimerRef.current)
+    }
+    maxRecordingTimerRef.current = setTimeout(() => {
+      console.log('[STT] Max recording time (60s) reached, processing...')
+      if (isListeningRef.current && !isProcessingSTTRef.current) {
+        stopRecordingAndProcess()
+      }
+    }, MAX_RECORDING_TIME)
   }
 
   const stopListening = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop()
-      setIsListening(false)
+    // Streaming 모드인 경우
+    if (sttModeRef.current === 'streaming') {
+      stopStreamingSTT()
+      return
     }
+
+    // VAD 모니터링 중지
+    stopVADMonitoring()
+
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current)
+    }
+    if (maxRecordingTimerRef.current) {
+      clearTimeout(maxRecordingTimerRef.current)
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop()
+      } catch (e) {}
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try {
+        mediaRecorderRef.current.stop()
+      } catch (e) {}
+    }
+
+    setIsListening(false)
   }
 
   const toggleMute = () => {
@@ -207,10 +762,8 @@ function Call() {
     }
   }
 
-  // 스피커 토글
   const toggleSpeaker = () => {
     setIsSpeakerOn(!isSpeakerOn)
-    // 현재 재생 중인 오디오 중지
     if (isSpeakerOn) {
       if (audioRef.current) {
         audioRef.current.pause()
@@ -241,7 +794,18 @@ function Call() {
     setWordCount(newWordCount)
     setCurrentSubtitle(text)
 
-    // 잠시 멈추고 AI 응답
+    // 사용자 메시지 DynamoDB에 저장
+    try {
+      await saveMessage(deviceId, sessionId, {
+        role: 'user',
+        content: text,
+        turnNumber: newTurnCount
+      })
+      console.log('[DB] User message saved, turn:', newTurnCount)
+    } catch (dbErr) {
+      console.error('[DB] Failed to save user message:', dbErr)
+    }
+
     stopListening()
     setIsLoading(true)
 
@@ -260,6 +824,19 @@ function Call() {
       }
 
       setMessages(prev => [...prev, aiMessage])
+
+      // AI 응답 DynamoDB에 저장
+      try {
+        await saveMessage(deviceId, sessionId, {
+          role: 'assistant',
+          content: response.message,
+          turnNumber: newTurnCount
+        })
+        console.log('[DB] AI response saved, turn:', newTurnCount)
+      } catch (dbErr) {
+        console.error('[DB] Failed to save AI message:', dbErr)
+      }
+
       await speakText(response.message)
     } catch (err) {
       console.error('Chat error:', err)
@@ -275,11 +852,10 @@ function Call() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
-  const handleEndCall = () => {
+  const handleEndCall = async () => {
     clearInterval(timerRef.current)
-    if (recognitionRef.current) {
-      recognitionRef.current.abort()
-    }
+    cleanupAudio()
+
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current = null
@@ -288,42 +864,48 @@ function Call() {
       speechSynthesis.cancel()
     }
 
-    // 통화 결과 저장
+    // DynamoDB에 세션 종료 기록
+    try {
+      await endSession(deviceId, sessionId, callTime, turnCount, wordCount)
+      console.log('[DB] Session ended:', sessionId)
+    } catch (dbErr) {
+      console.error('[DB] Failed to end session:', dbErr)
+    }
+
     const result = {
       duration: callTime,
       messages: messages,
       date: new Date().toISOString(),
       turnCount,
       wordCount,
-      tutorName
+      tutorName,
+      sessionId // 세션 ID 추가
     }
     localStorage.setItem('lastCallResult', JSON.stringify(result))
 
-    // 통화 기록 저장 (Home.jsx와 호환되는 형식)
     const history = JSON.parse(localStorage.getItem('callHistory') || '[]')
     const now = new Date()
     history.unshift({
-      id: Date.now(), // 고유 ID
-      timestamp: now.toISOString(), // ISO 형식 (필터링용)
+      id: Date.now(),
+      sessionId, // 세션 ID 추가
+      timestamp: now.toISOString(),
       date: now.toLocaleDateString('ko-KR'),
       fullDate: now.toLocaleString('ko-KR'),
       duration: formatTime(callTime),
-      durationSeconds: callTime, // 초 단위 저장
+      durationSeconds: callTime,
       words: wordCount,
       turnCount,
       tutorName
     })
-    localStorage.setItem('callHistory', JSON.stringify(history.slice(0, 50))) // 최대 50개 저장
+    localStorage.setItem('callHistory', JSON.stringify(history.slice(0, 50)))
 
     navigate('/result')
   }
 
-  // 자막 모드에 따른 표시 내용
   const getSubtitleContent = () => {
     if (subtitleMode === 'off') return null
     if (subtitleMode === 'english') return cleanSubtitleText(currentSubtitle)
     if (subtitleMode === 'translation') return currentTranslation || '(번역 준비 중...)'
-    // 'all' - 모두 보기
     return cleanSubtitleText(currentSubtitle)
   }
 
@@ -344,7 +926,7 @@ function Call() {
         {/* Call Timer */}
         <div className="call-timer">{formatTime(callTime)}</div>
 
-        {/* Subtitle Display - 화면 중앙 */}
+        {/* Subtitle Display */}
         {subtitleMode !== 'off' && subtitleContent && (
           <div className="subtitle-display">
             <p className="subtitle-text">{subtitleContent}</p>
@@ -363,15 +945,41 @@ function Call() {
           </div>
         )}
 
+        {/* Processing Indicator */}
+        {isProcessingSTT && (
+          <div className="processing-indicator">
+            <div className="spinner"></div>
+            <span>음성 인식 중...</span>
+          </div>
+        )}
+
         {/* 사용자 음성 인식 중간 결과 */}
-        {isListening && interimTranscript && (
+        {isListening && interimTranscript && !isProcessingSTT && (
           <div className="interim-transcript">
             <p>{interimTranscript}</p>
           </div>
         )}
+
+        {/* User Speaking Indicator */}
+        {isListening && userSpeaking && !isProcessingSTT && (
+          <div className="user-speaking-indicator">
+            <div className="sound-waves">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <span>말씀하세요...</span>
+          </div>
+        )}
+
+        {/* Listening Indicator */}
+        {isListening && !userSpeaking && !interimTranscript && !isProcessingSTT && (
+          <div className="listening-indicator">
+            <div className="pulse-ring"></div>
+            <span>듣고 있습니다...</span>
+          </div>
+        )}
       </div>
 
-      {/* Bottom Controls - 링글 스타일 */}
+      {/* Bottom Controls */}
       <div className="call-controls">
         <div className="control-buttons">
           <button
@@ -479,10 +1087,9 @@ function Call() {
           font-size: 18px;
           color: rgba(255, 255, 255, 0.6);
           font-variant-numeric: tabular-nums;
-          margin-bottom: 32px;
+          margin-bottom: 24px;
         }
 
-        /* 자막 표시 영역 */
         .subtitle-display {
           width: 100%;
           padding: 0 20px;
@@ -503,7 +1110,6 @@ function Call() {
           line-height: 1.4;
         }
 
-        /* Speaking Indicator (음파 애니메이션) */
         .speaking-indicator {
           margin-top: 24px;
         }
@@ -533,23 +1139,115 @@ function Call() {
           30% { opacity: 1; transform: scale(1.2); }
         }
 
-        /* 중간 인식 결과 */
+        .processing-indicator {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-top: 20px;
+          padding: 12px 24px;
+          background: rgba(99, 102, 241, 0.3);
+          border-radius: 12px;
+        }
+
+        .processing-indicator span {
+          color: white;
+          font-size: 14px;
+        }
+
+        .spinner {
+          width: 20px;
+          height: 20px;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-top-color: white;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+
+        .listening-indicator {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          margin-top: 24px;
+        }
+
+        .pulse-ring {
+          width: 60px;
+          height: 60px;
+          border: 3px solid rgba(34, 197, 94, 0.5);
+          border-radius: 50%;
+          animation: pulse 1.5s ease-out infinite;
+        }
+
+        @keyframes pulse {
+          0% { transform: scale(0.8); opacity: 1; }
+          100% { transform: scale(1.4); opacity: 0; }
+        }
+
+        .listening-indicator span {
+          color: rgba(255, 255, 255, 0.6);
+          font-size: 14px;
+        }
+
+        /* User Speaking Indicator */
+        .user-speaking-indicator {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          margin-top: 24px;
+        }
+
+        .user-speaking-indicator span {
+          color: #22c55e;
+          font-size: 14px;
+          font-weight: 500;
+        }
+
+        .sound-waves {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          height: 40px;
+        }
+
+        .sound-waves span {
+          width: 6px;
+          background: #22c55e;
+          border-radius: 3px;
+          animation: soundWave 0.8s ease-in-out infinite;
+        }
+
+        .sound-waves span:nth-child(1) { height: 15px; animation-delay: 0s; }
+        .sound-waves span:nth-child(2) { height: 25px; animation-delay: 0.1s; }
+        .sound-waves span:nth-child(3) { height: 35px; animation-delay: 0.2s; }
+        .sound-waves span:nth-child(4) { height: 25px; animation-delay: 0.3s; }
+        .sound-waves span:nth-child(5) { height: 15px; animation-delay: 0.4s; }
+
+        @keyframes soundWave {
+          0%, 100% { transform: scaleY(1); }
+          50% { transform: scaleY(1.5); }
+        }
+
         .interim-transcript {
           margin-top: 20px;
           padding: 12px 20px;
           background: rgba(34, 197, 94, 0.2);
           border-radius: 12px;
           border: 1px solid rgba(34, 197, 94, 0.3);
+          max-width: 90%;
         }
 
         .interim-transcript p {
-          color: rgba(255, 255, 255, 0.8);
+          color: rgba(255, 255, 255, 0.9);
           font-size: 16px;
-          font-style: italic;
           text-align: center;
         }
 
-        /* Bottom Controls - 목표 디자인: 컨트롤 위, 종료버튼 아래 가운데 */
         .call-controls {
           display: flex;
           flex-direction: column;
@@ -599,7 +1297,6 @@ function Call() {
           transform: scale(0.95);
         }
 
-        /* 자막 설정 모달 */
         .modal-overlay {
           position: fixed;
           top: 0;

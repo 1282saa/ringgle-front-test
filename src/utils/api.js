@@ -373,3 +373,182 @@ export async function getSettingsFromServer(deviceId) {
     'GetSettings'
   )
 }
+
+// ============================================
+// 세션 관리 API (DynamoDB 저장)
+// ============================================
+
+/**
+ * 새 대화 세션 시작
+ *
+ * @param {string} deviceId - 디바이스 UUID
+ * @param {string} sessionId - 세션 UUID
+ * @param {Object} settings - 튜터 설정
+ * @param {string} tutorName - 튜터 이름
+ * @returns {Promise<Object>} 세션 시작 결과
+ *
+ * @example
+ * const result = await startSession(deviceId, sessionId, settings, 'Gwen')
+ */
+export async function startSession(deviceId, sessionId, settings, tutorName) {
+  return apiRequest(
+    {
+      action: 'start_session',
+      deviceId,
+      sessionId,
+      settings,
+      tutorName,
+    },
+    'StartSession'
+  )
+}
+
+/**
+ * 대화 세션 종료
+ *
+ * @param {string} deviceId - 디바이스 UUID
+ * @param {string} sessionId - 세션 UUID
+ * @param {number} duration - 통화 시간 (초)
+ * @param {number} turnCount - 대화 턴 수
+ * @param {number} wordCount - 사용자 발화 단어 수
+ * @returns {Promise<Object>} 세션 종료 결과
+ *
+ * @example
+ * const result = await endSession(deviceId, sessionId, 300, 10, 150)
+ */
+export async function endSession(deviceId, sessionId, duration, turnCount, wordCount) {
+  return apiRequest(
+    {
+      action: 'end_session',
+      deviceId,
+      sessionId,
+      duration,
+      turnCount,
+      wordCount,
+    },
+    'EndSession'
+  )
+}
+
+/**
+ * 대화 메시지 저장
+ *
+ * @param {string} deviceId - 디바이스 UUID
+ * @param {string} sessionId - 세션 UUID
+ * @param {Object} message - 메시지 객체
+ * @param {string} message.role - 역할 ('user' | 'assistant')
+ * @param {string} message.content - 메시지 내용
+ * @param {number} [message.turnNumber] - 턴 번호
+ * @returns {Promise<Object>} 메시지 저장 결과
+ *
+ * @example
+ * await saveMessage(deviceId, sessionId, {
+ *   role: 'user',
+ *   content: 'Hello!',
+ *   turnNumber: 1
+ * })
+ */
+export async function saveMessage(deviceId, sessionId, message) {
+  return apiRequest(
+    {
+      action: 'save_message',
+      deviceId,
+      sessionId,
+      message,
+    },
+    'SaveMessage'
+  )
+}
+
+/**
+ * 세션 목록 조회
+ *
+ * @param {string} deviceId - 디바이스 UUID
+ * @param {number} [limit=10] - 조회 개수
+ * @param {Object} [lastKey] - 페이지네이션 키
+ * @returns {Promise<Object>} 세션 목록
+ *
+ * @example
+ * const { sessions, hasMore } = await getSessions(deviceId, 10)
+ */
+export async function getSessions(deviceId, limit = 10, lastKey = null) {
+  return apiRequest(
+    {
+      action: 'get_sessions',
+      deviceId,
+      limit,
+      lastKey,
+    },
+    'GetSessions'
+  )
+}
+
+/**
+ * 세션 상세 조회 (메시지 포함)
+ *
+ * @param {string} deviceId - 디바이스 UUID
+ * @param {string} sessionId - 세션 UUID
+ * @returns {Promise<Object>} 세션 상세 및 메시지
+ *
+ * @example
+ * const { session, messages } = await getSessionDetail(deviceId, sessionId)
+ */
+export async function getSessionDetail(deviceId, sessionId) {
+  return apiRequest(
+    {
+      action: 'get_session_detail',
+      deviceId,
+      sessionId,
+    },
+    'GetSessionDetail'
+  )
+}
+
+/**
+ * 세션 삭제
+ *
+ * @param {string} deviceId - 디바이스 UUID
+ * @param {string} sessionId - 세션 UUID
+ * @returns {Promise<Object>} 삭제 결과
+ *
+ * @example
+ * await deleteSession(deviceId, sessionId)
+ */
+export async function deleteSession(deviceId, sessionId) {
+  return apiRequest(
+    {
+      action: 'delete_session',
+      deviceId,
+      sessionId,
+    },
+    'DeleteSession'
+  )
+}
+
+// ============================================
+// Transcribe Streaming API
+// ============================================
+
+/**
+ * AWS Transcribe Streaming용 Presigned WebSocket URL 요청
+ *
+ * @param {string} [language='en-US'] - 인식할 언어
+ * @param {number} [sampleRate=16000] - 오디오 샘플레이트
+ * @returns {Promise<Object>} Presigned URL 응답
+ * @returns {string} return.url - WebSocket URL
+ * @returns {number} return.expiresIn - URL 만료 시간 (초)
+ *
+ * @example
+ * const { url } = await getTranscribeStreamingUrl('en-US', 16000)
+ * // Use url to connect WebSocket to AWS Transcribe Streaming
+ */
+export async function getTranscribeStreamingUrl(language = 'en-US', sampleRate = 16000) {
+  return apiRequest(
+    {
+      action: 'get_transcribe_url',
+      language,
+      sampleRate,
+    },
+    'GetTranscribeUrl'
+  )
+}

@@ -140,7 +140,7 @@ function Analysis() {
       <div className="analysis-error">
         <p>이 대화는 AI 분석이 불가능합니다.</p>
         <p className="sub">150단어 이상 발화해야 분석이 가능합니다.</p>
-        <button onClick={() => navigate(-1)}>돌아가기</button>
+        <button onClick={() => navigate('/', { state: { activeTab: 'history' } })}>돌아가기</button>
       </div>
     )
   }
@@ -151,7 +151,7 @@ function Analysis() {
     <div className="analysis-page">
       {/* Header */}
       <header className="analysis-header">
-        <button className="back-btn" onClick={() => navigate(-1)}>
+        <button className="back-btn" onClick={() => navigate('/', { state: { activeTab: 'history' } })}>
           <ArrowLeft size={24} />
         </button>
         <h1>AI 분석</h1>
