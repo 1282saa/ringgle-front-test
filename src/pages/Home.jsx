@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Phone, ChevronLeft, ChevronRight, Menu, Flame, Home as HomeIcon, Monitor, Bot, BarChart2, User, Check, Loader } from 'lucide-react'
-import { loadMockData } from '../data/mockCallHistory'
 import { getSessions } from '../utils/api'
 import { getDeviceId } from '../utils/helpers'
 
@@ -80,13 +79,6 @@ function Home() {
       }
     }
 
-    // 목업 데이터는 로컬에 기록이 없을 때만
-    if (!saved || JSON.parse(saved).length === 0) {
-      console.log('[Home] Loading mock data...')
-      const mockData = loadMockData()
-      setCallHistory(mockData)
-    }
-
     // DynamoDB에서 세션 로드
     loadSessionsFromDB()
   }, [])
@@ -128,17 +120,20 @@ function Home() {
     return true
   })
 
-  // DB 세션 날짜 포맷팅
+  // DB 세션 날짜 포맷팅 (KST 변환)
   const formatSessionDate = (timestamp) => {
     if (!timestamp) return ''
     const date = new Date(timestamp)
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
+    // 한국 시간대로 명시적 변환
+    const kstOptions = { timeZone: 'Asia/Seoul' }
+    const year = date.toLocaleString('en-US', { ...kstOptions, year: 'numeric' })
+    const month = String(date.toLocaleString('en-US', { ...kstOptions, month: 'numeric' })).padStart(2, '0')
+    const day = String(date.toLocaleString('en-US', { ...kstOptions, day: 'numeric' })).padStart(2, '0')
     const dayNames = ['일', '월', '화', '수', '목', '금', '토']
-    const dayName = dayNames[date.getDay()]
-    const hours = date.getHours()
-    const minutes = String(date.getMinutes()).padStart(2, '0')
+    const dayIndex = new Date(date.toLocaleString('en-US', kstOptions)).getDay()
+    const dayName = dayNames[dayIndex]
+    const hours = parseInt(date.toLocaleString('en-US', { ...kstOptions, hour: 'numeric', hour12: false }))
+    const minutes = String(date.toLocaleString('en-US', { ...kstOptions, minute: 'numeric' })).padStart(2, '0')
     const ampm = hours >= 12 ? '오후' : '오전'
     const hour12 = hours % 12 || 12
     return `${year}. ${month}. ${day}(${dayName}) ${ampm} ${String(hour12).padStart(2, '0')}:${minutes}`
@@ -152,16 +147,19 @@ function Home() {
     return `${mins}:${String(secs).padStart(2, '0')}`
   }
 
-  // 날짜 포맷팅 (링글 스타일)
+  // 날짜 포맷팅 (링글 스타일, KST 변환)
   const formatCallDate = (timestamp) => {
     const date = new Date(timestamp)
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
+    // 한국 시간대로 명시적 변환
+    const kstOptions = { timeZone: 'Asia/Seoul' }
+    const year = date.toLocaleString('en-US', { ...kstOptions, year: 'numeric' })
+    const month = String(date.toLocaleString('en-US', { ...kstOptions, month: 'numeric' })).padStart(2, '0')
+    const day = String(date.toLocaleString('en-US', { ...kstOptions, day: 'numeric' })).padStart(2, '0')
     const dayNames = ['일', '월', '화', '수', '목', '금', '토']
-    const dayName = dayNames[date.getDay()]
-    const hours = date.getHours()
-    const minutes = String(date.getMinutes()).padStart(2, '0')
+    const dayIndex = new Date(date.toLocaleString('en-US', kstOptions)).getDay()
+    const dayName = dayNames[dayIndex]
+    const hours = parseInt(date.toLocaleString('en-US', { ...kstOptions, hour: 'numeric', hour12: false }))
+    const minutes = String(date.toLocaleString('en-US', { ...kstOptions, minute: 'numeric' })).padStart(2, '0')
     const ampm = hours >= 12 ? '오후' : '오전'
     const hour12 = hours % 12 || 12
     return `${year}. ${month}. ${day}(${dayName}) ${ampm} ${String(hour12).padStart(2, '0')}:${minutes}`

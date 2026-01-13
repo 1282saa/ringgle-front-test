@@ -81,6 +81,24 @@ npx cap open android
 npx cap open ios
 ```
 
+### Web Deployment (AWS S3 + CloudFront)
+
+**Live URL**: https://d3pw62uy753kuv.cloudfront.net
+
+```bash
+# Build & Deploy to S3
+npm run build && aws s3 sync dist/ s3://eng-call --delete
+
+# Invalidate CloudFront cache (for immediate updates)
+aws cloudfront create-invalidation --distribution-id E2EPS9DBLFD0FM --paths "/*"
+```
+
+| Resource | Value |
+|----------|-------|
+| S3 Bucket | `eng-call` |
+| CloudFront Distribution | `E2EPS9DBLFD0FM` |
+| Region | `ap-northeast-2` |
+
 ---
 
 ## Project Structure
@@ -109,6 +127,21 @@ eng-learning/
 ---
 
 ## Documentation
+
+### Quick Links
+
+| Category | Document | Description |
+|----------|----------|-------------|
+| **Database** | [DATABASE_ERD.md](docs/DATABASE_ERD.md) | ERD, 테이블 구조, 관계도 |
+| **API** | [API_REFERENCE.md](docs/API_REFERENCE.md) | API 엔드포인트 상세 |
+| **API Spec** | [openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0 스펙 |
+| **AWS** | [AWS_INFRASTRUCTURE.md](docs/AWS_INFRASTRUCTURE.md) | AWS 인프라 구성도 |
+| **AI Pipeline** | [AI_PIPELINE.md](docs/AI_PIPELINE.md) | Claude AI 통합 파이프라인 |
+| **Frontend** | [FRONTEND_GUIDE.md](docs/FRONTEND_GUIDE.md) | 프론트엔드 개발 가이드 |
+| **Backend** | [BACKEND-API.md](docs/BACKEND-API.md) | 백엔드 API 상세 |
+| **Features** | [FEATURE_SPECS.md](docs/FEATURE_SPECS.md) | 기능 명세서 |
+| **UI/UX** | [UI_UX_SPECIFICATION.md](docs/UI_UX_SPECIFICATION.md) | UI/UX 상세 스펙 |
+| **Dev Log** | [DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md) | 개발 로그 |
 
 ### Development Phases
 
