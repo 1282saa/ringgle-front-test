@@ -13,6 +13,7 @@ from urllib.parse import quote
 bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
 polly = boto3.client('polly', region_name='us-east-1')
 transcribe = boto3.client('transcribe', region_name='us-east-1')
+translate_client = boto3.client('translate', region_name='us-east-1')
 s3 = boto3.client('s3', region_name='us-east-1')
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 
@@ -149,6 +150,7 @@ ACTION_HANDLERS = {
     'chat': 'handle_chat',
     'tts': 'handle_tts',
     'stt': 'handle_stt',
+    'translate': 'handle_translate',
     'analyze': 'handle_analyze',
     'save_settings': 'handle_save_settings',
     'get_settings': 'handle_get_settings',
@@ -291,6 +293,32 @@ def handle_tts(body):
         return success_response({'audio': audio_base64, 'contentType': 'audio/mpeg', 'voice': voice_id, 'engine': engine})
     except Exception as e:
         print(f"TTS error: {str(e)}")
+        return error_response(str(e), 500)
+
+
+def handle_translate(body):
+    """영어→한국어 번역 (Amazon Translate)"""
+    text = body.get('text', '')
+    source_lang = body.get('sourceLang', 'en')
+    target_lang = body.get('targetLang', 'ko')
+
+    if not text:
+        return error_response('No text to translate')
+
+    try:
+        response = translate_client.translate_text(
+            Text=text,
+            SourceLanguageCode=source_lang,
+            TargetLanguageCode=target_lang
+        )
+        return success_response({
+            'translation': response['TranslatedText'],
+            'sourceLang': source_lang,
+            'targetLang': target_lang,
+            'success': True
+        })
+    except Exception as e:
+        print(f"Translate error: {str(e)}")
         return error_response(str(e), 500)
 
 

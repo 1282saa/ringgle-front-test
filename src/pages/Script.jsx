@@ -15,7 +15,7 @@ import {
   ArrowLeft, Volume2, ChevronDown, ChevronUp,
   MessageCircle, Loader, Settings, Sparkles, Pencil
 } from 'lucide-react'
-import { textToSpeech, playAudioBase64, getSessionDetail } from '../utils/api'
+import { textToSpeech, playAudioBase64, getSessionDetail, translateText } from '../utils/api'
 import { getDeviceId } from '../utils/helpers'
 
 function Script() {
@@ -26,6 +26,8 @@ function Script() {
 
   const [messages, setMessages] = useState([])
   const [showTranslation, setShowTranslation] = useState({})
+  const [translations, setTranslations] = useState({}) // 번역 캐시
+  const [loadingTranslation, setLoadingTranslation] = useState({})
   const [showCorrection, setShowCorrection] = useState({}) // 'loading' | 'done' | undefined
   const [playingId, setPlayingId] = useState(null)
   const [tutorInfo, setTutorInfo] = useState({ name: 'AI', accent: 'us' })
@@ -92,12 +94,37 @@ function Script() {
     }
   }, [callData, isDbSession, sessionId, sessionData])
 
-  // 번역 토글
-  const toggleTranslation = (messageId) => {
-    setShowTranslation(prev => ({
-      ...prev,
-      [messageId]: !prev[messageId]
-    }))
+  // 번역 토글 (API에서 번역 가져오기)
+  const toggleTranslation = async (messageId, content) => {
+    const isCurrentlyShowing = showTranslation[messageId]
+
+    // 이미 보이고 있으면 숨기기
+    if (isCurrentlyShowing) {
+      setShowTranslation(prev => ({ ...prev, [messageId]: false }))
+      return
+    }
+
+    // 번역 표시
+    setShowTranslation(prev => ({ ...prev, [messageId]: true }))
+
+    // 이미 번역이 있으면 다시 가져오지 않음
+    if (translations[messageId]) {
+      return
+    }
+
+    // 번역 가져오기
+    setLoadingTranslation(prev => ({ ...prev, [messageId]: true }))
+    try {
+      const result = await translateText(content)
+      if (result.translation) {
+        setTranslations(prev => ({ ...prev, [messageId]: result.translation }))
+      }
+    } catch (err) {
+      console.error('[Translation] Error:', err)
+      setTranslations(prev => ({ ...prev, [messageId]: '번역을 불러올 수 없습니다.' }))
+    } finally {
+      setLoadingTranslation(prev => ({ ...prev, [messageId]: false }))
+    }
   }
 
   // 교정 요청/토글 (로딩 → 완료 → 숨기기 토글)
@@ -357,9 +384,9 @@ function Script() {
                     {/* 번역 보기 */}
                     <button
                       className="translation-btn"
-                      onClick={() => toggleTranslation(messageId)}
+                      onClick={() => toggleTranslation(messageId, content)}
                     >
-                      번역 보기
+                      {showTranslation[messageId] ? '번역 숨기기' : '번역 보기'}
                     </button>
 
                     {/* TTS 버튼 */}
@@ -372,7 +399,9 @@ function Script() {
 
                     {showTranslation[messageId] && (
                       <p className="translation-text">
-                        {message.translation || '(번역 준비 중...)'}
+                        {loadingTranslation[messageId]
+                          ? '번역 중...'
+                          : translations[messageId] || message.translation || '(번역 준비 중...)'}
                       </p>
                     )}
                   </div>

@@ -23,10 +23,11 @@ import { getTutorSettings } from './helpers'
  * @constant {Object}
  */
 const API_ACTIONS = {
-  CHAT: 'chat',       // AI 대화
-  TTS: 'tts',         // 텍스트 → 음성
-  STT: 'stt',         // 음성 → 텍스트
-  ANALYZE: 'analyze', // 대화 분석
+  CHAT: 'chat',           // AI 대화
+  TTS: 'tts',             // 텍스트 → 음성
+  STT: 'stt',             // 음성 → 텍스트
+  TRANSLATE: 'translate', // 번역
+  ANALYZE: 'analyze',     // 대화 분석
 }
 
 // ============================================
@@ -146,6 +147,37 @@ export async function analyzeConversation(messages) {
       messages,
     },
     'Analyze'
+  )
+}
+
+// ============================================
+// 번역 API
+// ============================================
+
+/**
+ * 텍스트 번역 (AWS Translate)
+ * 기본적으로 영어 → 한국어 번역
+ *
+ * @param {string} text - 번역할 텍스트
+ * @param {string} [sourceLang='en'] - 원본 언어 코드
+ * @param {string} [targetLang='ko'] - 대상 언어 코드
+ * @returns {Promise<Object>} 번역 결과
+ * @returns {string} return.translation - 번역된 텍스트
+ * @returns {boolean} return.success - 성공 여부
+ *
+ * @example
+ * const result = await translateText("Hello, how are you?")
+ * console.log(result.translation) // "안녕하세요, 어떻게 지내세요?"
+ */
+export async function translateText(text, sourceLang = 'en', targetLang = 'ko') {
+  return apiRequest(
+    {
+      action: API_ACTIONS.TRANSLATE,
+      text,
+      sourceLang,
+      targetLang,
+    },
+    'Translate'
   )
 }
 

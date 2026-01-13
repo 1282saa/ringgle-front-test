@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Mic, MicOff, Volume2, VolumeX, Captions, X } from 'lucide-react'
-import { sendMessage, textToSpeech, playAudioBase64, speechToText, startSession, endSession, saveMessage } from '../utils/api'
+import { sendMessage, textToSpeech, playAudioBase64, speechToText, startSession, endSession, saveMessage, translateText } from '../utils/api'
 import { getDeviceId } from '../utils/helpers'
 import { TranscribeStreamingClient } from '../utils/transcribeStreaming'
 
@@ -543,6 +543,20 @@ function Call() {
     setIsListening(false)
   }
 
+  // 번역 가져오기 (비동기)
+  const fetchTranslation = async (text) => {
+    try {
+      const result = await translateText(text)
+      if (result.translation) {
+        setCurrentTranslation(result.translation)
+        console.log('[Translation] Fetched:', result.translation)
+      }
+    } catch (err) {
+      console.error('[Translation] Error:', err)
+      setCurrentTranslation('')
+    }
+  }
+
   // 첫 인사 시작 (StrictMode에서 중복 실행 방지)
   useEffect(() => {
     if (conversationStartedRef.current) return
@@ -574,7 +588,10 @@ function Call() {
       setMessages([aiMessage])
       setCurrentSubtitle(response.message)
 
-      // 3. 첫 AI 메시지 DynamoDB에 저장
+      // 3. 번역 가져오기 (비동기, TTS 블로킹하지 않음)
+      fetchTranslation(response.message)
+
+      // 4. 첫 AI 메시지 DynamoDB에 저장
       try {
         await saveMessage(deviceId, sessionId, {
           role: 'assistant',
@@ -841,6 +858,9 @@ function Call() {
       }
 
       setMessages(prev => [...prev, aiMessage])
+
+      // 번역 가져오기 (비동기, TTS 블로킹하지 않음)
+      fetchTranslation(response.message)
 
       // AI 응답 DynamoDB에 저장
       try {
