@@ -8,7 +8,6 @@ function Home() {
   const navigate = useNavigate()
   const location = useLocation()
   const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'call') // call, settings, history
-  const [callHistory, setCallHistory] = useState([])
   const [dbSessions, setDbSessions] = useState([])
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
   const [currentMonth, setCurrentMonth] = useState(new Date())
@@ -70,15 +69,6 @@ function Home() {
   }
 
   useEffect(() => {
-    // 통화 기록 로드 (로컬 + DB)
-    const saved = localStorage.getItem('callHistory')
-    if (saved) {
-      const history = JSON.parse(saved)
-      if (history.length > 0) {
-        setCallHistory(history)
-      }
-    }
-
     // DynamoDB에서 세션 로드
     loadSessionsFromDB()
   }, [])
@@ -97,18 +87,8 @@ function Home() {
     setCurrentMonth(newDate)
   }
 
-  // 현재 월의 통화 기록 필터링
-  const filteredHistory = callHistory.filter(call => {
-    const callDate = new Date(call.timestamp)
-    const sameMonth = callDate.getMonth() === currentMonth.getMonth() &&
-                      callDate.getFullYear() === currentMonth.getFullYear()
-    if (!sameMonth) return false
-    if (filterAnalysisOnly) return call.words >= 150
-    return true
-  })
-
-  // 완료한 전화 개수 (DB 세션 우선)
-  const completedCalls = dbSessions.length > 0 ? dbSessions.length : callHistory.length
+  // 완료한 전화 개수
+  const completedCalls = dbSessions.length
 
   // DB 세션을 현재 월로 필터링
   const filteredDbSessions = dbSessions.filter(session => {
@@ -145,24 +125,6 @@ function Home() {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${String(secs).padStart(2, '0')}`
-  }
-
-  // 날짜 포맷팅 (링글 스타일, KST 변환)
-  const formatCallDate = (timestamp) => {
-    const date = new Date(timestamp)
-    // 한국 시간대로 명시적 변환
-    const kstOptions = { timeZone: 'Asia/Seoul' }
-    const year = date.toLocaleString('en-US', { ...kstOptions, year: 'numeric' })
-    const month = String(date.toLocaleString('en-US', { ...kstOptions, month: 'numeric' })).padStart(2, '0')
-    const day = String(date.toLocaleString('en-US', { ...kstOptions, day: 'numeric' })).padStart(2, '0')
-    const dayNames = ['일', '월', '화', '수', '목', '금', '토']
-    const dayIndex = new Date(date.toLocaleString('en-US', kstOptions)).getDay()
-    const dayName = dayNames[dayIndex]
-    const hours = parseInt(date.toLocaleString('en-US', { ...kstOptions, hour: 'numeric', hour12: false }))
-    const minutes = String(date.toLocaleString('en-US', { ...kstOptions, minute: 'numeric' })).padStart(2, '0')
-    const ampm = hours >= 12 ? '오후' : '오전'
-    const hour12 = hours % 12 || 12
-    return `${year}. ${month}. ${day}(${dayName}) ${ampm} ${String(hour12).padStart(2, '0')}:${minutes}`
   }
 
   const handleCall = () => {
@@ -380,54 +342,8 @@ function Home() {
               </>
             )}
 
-            {/* Local Call Cards (DB가 비어있을 때 폴백) */}
-            {!isLoadingSessions && filteredDbSessions.length === 0 && filteredHistory.length > 0 && (
-              <>
-                {filteredHistory.map((call) => {
-                  const hasAnalysis = call.words >= 150
-                  return (
-                    <div key={call.id} className="call-card">
-                      <span className="call-type-tag">전화</span>
-                      <p className="call-date">{formatCallDate(call.timestamp)}</p>
-                      <p className="call-words">
-                        <span className={hasAnalysis ? 'word-count-ok' : 'word-count-low'}>
-                          {call.words}단어
-                        </span>
-                        <span className="word-threshold"> / 150단어</span>
-                      </p>
-
-                      <div className="call-buttons">
-                        <button
-                          className="call-btn-item"
-                          onClick={() => navigate('/script', { state: { callId: call.id, callData: call } })}
-                        >
-                          대화 스크립트 확인
-                        </button>
-
-                        {hasAnalysis && (
-                          <button
-                            className="call-btn-item"
-                            onClick={() => navigate('/analysis', { state: { callId: call.id, callData: call } })}
-                          >
-                            AI 분석 확인
-                          </button>
-                        )}
-
-                        <button
-                          className="call-btn-item"
-                          onClick={() => navigate('/practice', { state: { callId: call.id, callData: call } })}
-                        >
-                          핵심 표현 연습하기
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </>
-            )}
-
             {/* Empty State */}
-            {!isLoadingSessions && filteredDbSessions.length === 0 && filteredHistory.length === 0 && (
+            {!isLoadingSessions && filteredDbSessions.length === 0 && (
               <div className="empty-history">
                 <div className="empty-icon">
                   <Phone size={32} color="#9ca3af" />
