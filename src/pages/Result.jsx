@@ -56,10 +56,10 @@ function Result() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  // 말한 단어 수
-  const wordCount = result?.messages
+  // 말한 단어 수 - 저장된 wordCount 우선 사용, 없으면 메시지에서 계산
+  const wordCount = result?.wordCount || result?.messages
     ?.filter(m => m.speaker === 'user' || m.role === 'user')
-    .reduce((acc, m) => acc + ((m.en || m.content)?.split(' ').length || 0), 0) || 0
+    .reduce((acc, m) => acc + (m.content?.split(' ').filter(w => w.length > 0).length || 0), 0) || 0
 
   const submitFeedback = () => {
     // 피드백 저장 (로컬스토리지 또는 API)
