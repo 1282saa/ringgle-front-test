@@ -10,7 +10,7 @@
 |------|-------------|
 | **Project** | Ringle AI English Learning MVP |
 | **Duration** | 2026-01-12 ~ Ongoing |
-| **Total Phases** | 10 Completed |
+| **Total Phases** | 11 Completed |
 | **Platforms** | Web, iOS, Android |
 
 ---
@@ -29,6 +29,7 @@
 | 8 | Code Refactoring | 01-12 | Done | Constants centralization, deduplication |
 | 9 | UX/UI Improvements | 01-12 | Done | Subtitles, speaker toggle, accuracy calc |
 | 10 | Call Tab UI | 01-12 | Done | Call tab UI refinement |
+| 11 | Practice Feature | 01-13 | Done | 핵심 표현 연습 (문법 교정 연습) |
 
 ---
 
@@ -126,6 +127,18 @@ Call Tab UI
 └── Result: Clean call screen
 ```
 
+### Phase 11: Practice Feature (핵심 표현 연습)
+```
+Key Expression Practice
+├── Practice.jsx: 링글 원본 UI 100% 재현
+├── Step 1: 설명 화면 (문장 + 번역 + 설명)
+├── Step 2: 따라 말하기 (TTS + 녹음 + 재생)
+├── Step 3: 완료 화면
+├── S3 Upload: 사용자 녹음 파일 저장
+├── Lambda: upload_practice_audio, save_practice_result 핸들러
+└── Result: 문법 교정 기반 표현 연습 기능
+```
+
 ---
 
 ## Tech Stack
@@ -180,6 +193,8 @@ aws cloudfront create-invalidation --distribution-id E2EPS9DBLFD0FM --paths "/*"
 | `get_sessions` | List user sessions |
 | `get_session_detail` | Get session with messages |
 | `delete_session` | Delete session |
+| `upload_practice_audio` | Upload user recording to S3 |
+| `save_practice_result` | Save practice result metadata |
 
 ---
 
@@ -187,11 +202,11 @@ aws cloudfront create-invalidation --distribution-id E2EPS9DBLFD0FM --paths "/*"
 
 | Phase | Title | Description | Priority |
 |:-----:|-------|-------------|:--------:|
-| 11 | Progress Tracking | Track learning progress over sessions | High |
-| 12 | Lesson Plans | Structured learning paths | Medium |
-| 13 | Mobile Deployment | App Store / Play Store release | High |
-| 14 | Analytics | Usage and performance metrics | Medium |
-| 15 | Component Extraction | Common component separation | Low |
+| 12 | Progress Tracking | Track learning progress over sessions | High |
+| 13 | Lesson Plans | Structured learning paths | Medium |
+| 14 | Mobile Deployment | App Store / Play Store release | High |
+| 15 | Analytics | Usage and performance metrics | Medium |
+| 16 | Component Extraction | Common component separation | Low |
 
 ---
 
@@ -204,13 +219,15 @@ eng-learning/
 │   │   ├── Home.jsx          # Main screen
 │   │   ├── Call.jsx          # Voice call
 │   │   ├── Result.jsx        # Result analysis
+│   │   ├── Analysis.jsx      # AI analysis
+│   │   ├── Practice.jsx      # Key expression practice
 │   │   └── Settings.jsx      # Settings
 │   └── utils/
 │       └── api.js            # API client
 ├── backend/
 │   └── lambda_function.py    # Lambda handler
 ├── docs/
-│   ├── phase/                # Detailed phase docs
+│   ├── phase/                # Detailed phase docs (1-11)
 │   ├── AWS_INFRASTRUCTURE.md
 │   ├── AI_PIPELINE.md
 │   ├── DATABASE_ERD.md

@@ -161,6 +161,8 @@ ACTION_HANDLERS = {
     'get_session_detail': 'handle_get_session_detail',
     'delete_session': 'handle_delete_session',
     'get_transcribe_url': 'handle_get_transcribe_url',
+    'upload_practice_audio': 'handle_upload_practice_audio',
+    'save_practice_result': 'handle_save_practice_result',
 }
 
 
@@ -812,4 +814,95 @@ def handle_get_transcribe_url(body):
 
     except Exception as e:
         print(f"Get transcribe URL error: {str(e)}")
+        return error_response(str(e), 500)
+
+
+# ============================================
+# 연습 오디오 업로드 핸들러
+# ============================================
+
+def handle_upload_practice_audio(body):
+    """사용자 연습 녹음 오디오를 S3에 업로드"""
+    audio_base64 = body.get('audio', '')
+    session_id = body.get('sessionId', '')
+    practice_index = body.get('practiceIndex', 0)
+    timestamp = body.get('timestamp', int(time.time() * 1000))
+
+    if not audio_base64:
+        return error_response('No audio data provided')
+
+    try:
+        # Base64 디코딩
+        audio_data = base64.b64decode(audio_base64)
+
+        # S3 키 생성 (practice/sessionId/timestamp_index.webm)
+        s3_key = f"practice/{session_id}/{timestamp}_{practice_index}.webm"
+
+        # S3에 업로드
+        s3.put_object(
+            Bucket=S3_BUCKET,
+            Key=s3_key,
+            Body=audio_data,
+            ContentType='audio/webm',
+            Metadata={
+                'sessionId': session_id,
+                'practiceIndex': str(practice_index),
+                'uploadedAt': get_now()
+            }
+        )
+
+        # CloudFront URL 또는 S3 URL 생성
+        # CloudFront가 설정되어 있다면 해당 URL 사용
+        audio_url = f"https://{S3_BUCKET}.s3.amazonaws.com/{s3_key}"
+
+        return success_response({
+            'success': True,
+            'audioUrl': audio_url,
+            'audioKey': s3_key,
+            'uploadedAt': get_now()
+        })
+
+    except Exception as e:
+        print(f"Upload practice audio error: {str(e)}")
+        return error_response(str(e), 500)
+
+
+def handle_save_practice_result(body):
+    """연습 결과 메타데이터를 DynamoDB에 저장"""
+    validation_error = validate_required(body, 'deviceId', 'sessionId')
+    if validation_error:
+        return validation_error
+
+    device_id = body.get('deviceId')
+    session_id = body.get('sessionId')
+    practice_data = body.get('practiceData', {})
+
+    try:
+        now = get_now()
+        practice_id = f"PRACTICE#{now}"
+
+        get_table().put_item(Item={
+            'PK': f'DEVICE#{device_id}',
+            'SK': f'SESSION#{session_id}#{practice_id}',
+            'GSI1PK': f'SESSION#{session_id}',
+            'GSI1SK': practice_id,
+            'type': 'PRACTICE_RESULT',
+            'deviceId': device_id,
+            'sessionId': session_id,
+            'totalExpressions': practice_data.get('totalExpressions', 0),
+            'completedExpressions': practice_data.get('completedExpressions', 0),
+            'results': practice_data.get('results', []),
+            'completedAt': now,
+            'createdAt': now,
+            'ttl': get_ttl()
+        })
+
+        return success_response({
+            'success': True,
+            'practiceId': practice_id,
+            'savedAt': now
+        })
+
+    except Exception as e:
+        print(f"Save practice result error: {str(e)}")
         return error_response(str(e), 500)

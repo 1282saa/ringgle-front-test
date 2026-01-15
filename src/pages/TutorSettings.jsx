@@ -6,12 +6,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X } from 'lucide-react'
-import { getFromStorage, setToStorage } from '../utils/helpers'
 import { TUTORS, DIFFICULTIES, DURATIONS, SPEEDS } from '../constants'
+import { useUserSettings } from '../context'
+import { haptic } from '../utils/capacitor'
 
 function TutorSettings() {
   const navigate = useNavigate()
   const carouselRef = useRef(null)
+
+  // Context에서 설정 가져오기
+  const { settings, updateSettings } = useUserSettings()
 
   const [selectedTutor, setSelectedTutor] = useState('gwen')
   const [difficulty, setDifficulty] = useState('easy')
@@ -20,14 +24,14 @@ function TutorSettings() {
   const [currentPage, setCurrentPage] = useState(0)
 
   useEffect(() => {
-    const saved = getFromStorage('tutorSettings', {})
-    if (saved.tutor) setSelectedTutor(saved.tutor)
-    if (saved.difficulty) setDifficulty(saved.difficulty)
-    if (saved.speed) setSpeed(saved.speed)
-    if (saved.duration) setDuration(saved.duration)
+    // Context에서 저장된 값 로드
+    if (settings.tutor) setSelectedTutor(settings.tutor)
+    if (settings.difficulty) setDifficulty(settings.difficulty)
+    if (settings.speed) setSpeed(settings.speed)
+    if (settings.duration) setDuration(settings.duration)
 
     // 선택된 튜터로 스크롤
-    const tutorIndex = TUTORS.findIndex(t => t.id === (saved.tutor || 'gwen'))
+    const tutorIndex = TUTORS.findIndex(t => t.id === (settings.tutor || 'gwen'))
     if (tutorIndex >= 0) {
       setCurrentPage(tutorIndex)
       setTimeout(() => scrollToTutor(tutorIndex, false), 100)
@@ -35,14 +39,20 @@ function TutorSettings() {
   }, [])
 
   const handleSave = () => {
-    const settings = {
+    haptic.success()
+    // 선택된 튜터 정보 찾기
+    const tutor = TUTORS.find(t => t.id === selectedTutor) || TUTORS[0]
+
+    // Context를 통해 설정 저장 (튜터 정보 포함)
+    updateSettings({
       tutor: selectedTutor,
+      tutorName: tutor.name,
+      accent: tutor.accent,
+      gender: tutor.gender,
       difficulty,
       speed,
       duration,
-    }
-    setToStorage('tutorSettings', settings)
-    setToStorage('selectedTutor', selectedTutor)
+    })
     navigate(-1)
   }
 
@@ -56,6 +66,7 @@ function TutorSettings() {
   }
 
   const scrollToTutor = (index, smooth = true) => {
+    haptic.selection()
     if (carouselRef.current) {
       const cardWidth = 260 + 16
       carouselRef.current.scrollTo({
@@ -65,6 +76,12 @@ function TutorSettings() {
     }
     setSelectedTutor(TUTORS[index].id)
     setCurrentPage(index)
+  }
+
+  // 옵션 선택 핸들러 (햅틱 포함)
+  const handleOptionSelect = (setter, value) => {
+    haptic.selection()
+    setter(value)
   }
 
   return (
@@ -122,7 +139,7 @@ function TutorSettings() {
               <button
                 key={item.id}
                 className={`option-btn ${difficulty === item.id ? 'selected' : ''}`}
-                onClick={() => setDifficulty(item.id)}
+                onClick={() => handleOptionSelect(setDifficulty, item.id)}
               >
                 {item.label}
               </button>
@@ -138,7 +155,7 @@ function TutorSettings() {
               <button
                 key={item.id}
                 className={`option-btn ${speed === item.id ? 'selected' : ''}`}
-                onClick={() => setSpeed(item.id)}
+                onClick={() => handleOptionSelect(setSpeed, item.id)}
               >
                 {item.label}
               </button>
@@ -155,7 +172,7 @@ function TutorSettings() {
               <button
                 key={item.id}
                 className={`option-btn ${duration === item.id ? 'selected' : ''}`}
-                onClick={() => setDuration(item.id)}
+                onClick={() => handleOptionSelect(setDuration, item.id)}
               >
                 {item.label}
               </button>

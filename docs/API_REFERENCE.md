@@ -31,6 +31,8 @@ Ringle AI English Learning API provides AI-powered English conversation practice
 | [`get_session_detail`](#11-get_session_detail---get-session-detail) | Get session detail | Sessions |
 | [`delete_session`](#12-delete_session---delete-session) | Delete session | Sessions |
 | [`get_transcribe_url`](#13-get_transcribe_url---get-streaming-url) | Get streaming URL | Speech |
+| [`upload_practice_audio`](#14-upload_practice_audio---upload-recording) | Upload user recording | Practice |
+| [`save_practice_result`](#15-save_practice_result---save-practice-result) | Save practice result | Practice |
 
 ---
 
@@ -589,6 +591,85 @@ ws.onmessage = (event) => {
   // Receive transcript events
 }
 ```
+
+---
+
+### 14. `upload_practice_audio` - Upload Recording
+
+Uploads user practice recording to S3.
+
+**Request:**
+
+```json
+{
+  "action": "upload_practice_audio",
+  "audio": "GkXfo59ChoEBQveBAULygQRC84...",
+  "sessionId": "f8e7d6c5-b4a3-2190-fedc-ba0987654321",
+  "practiceIndex": 0,
+  "timestamp": 1736771234567
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "audioUrl": "https://eng-learning-audio.s3.amazonaws.com/practice/f8e7d6c5.../1736771234567_0.webm",
+  "audioKey": "practice/f8e7d6c5.../1736771234567_0.webm",
+  "uploadedAt": "2026-01-13T21:30:00+09:00"
+}
+```
+
+**Notes:**
+- Audio format: WebM (base64 encoded)
+- S3 bucket: `eng-learning-audio`
+- Path: `practice/{sessionId}/{timestamp}_{practiceIndex}.webm`
+
+---
+
+### 15. `save_practice_result` - Save Practice Result
+
+Saves practice session metadata to DynamoDB.
+
+**Request:**
+
+```json
+{
+  "action": "save_practice_result",
+  "deviceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sessionId": "f8e7d6c5-b4a3-2190-fedc-ba0987654321",
+  "practiceData": {
+    "totalExpressions": 3,
+    "completedExpressions": 3,
+    "results": [
+      {
+        "index": 0,
+        "original": "I go to school yesterday",
+        "corrected": "I went to school yesterday",
+        "userTranscript": "I went to school yesterday",
+        "audioUrl": "https://eng-learning-audio.s3.amazonaws.com/...",
+        "timestamp": 1736771234567
+      }
+    ]
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "practiceId": "PRACTICE#2026-01-13T21:30:00+09:00",
+  "savedAt": "2026-01-13T21:30:00+09:00"
+}
+```
+
+**DynamoDB Item:**
+- PK: `DEVICE#{deviceId}`
+- SK: `SESSION#{sessionId}#PRACTICE#{timestamp}`
+- TTL: 90 days
 
 ---
 

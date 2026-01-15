@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, ChevronRight, X } from 'lucide-react'
 import { getFromStorage, setToStorage } from '../utils/helpers'
+import { notificationService } from '../services/notificationService'
 
 const DAYS = [
   { id: 'sunday', label: '일요일', labelEn: 'Sunday', short: '일' },
@@ -57,7 +58,7 @@ function ScheduleSettings() {
     }
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const newSchedules = { ...schedules }
     if (!newSchedules[editingDay]) {
       newSchedules[editingDay] = []
@@ -72,9 +73,12 @@ function ScheduleSettings() {
     setSchedules(newSchedules)
     setToStorage('callSchedules', newSchedules)
     setShowModal(false)
+
+    // 알림 리마인더 동기화
+    await notificationService.syncReminders()
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (editingIndex === null) return
     const newSchedules = { ...schedules }
     newSchedules[editingDay].splice(editingIndex, 1)
@@ -84,6 +88,9 @@ function ScheduleSettings() {
     setSchedules(newSchedules)
     setToStorage('callSchedules', newSchedules)
     setShowModal(false)
+
+    // 알림 리마인더 동기화
+    await notificationService.syncReminders()
   }
 
   return (

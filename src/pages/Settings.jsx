@@ -9,8 +9,9 @@
 
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, X, Check, Home, Monitor, Bot, Phone, BarChart2, User, Flame, Menu } from 'lucide-react'
+import { ChevronRight, X, Check, Home, Monitor, Bot, Phone, BarChart2, User, Flame, Menu, Bell } from 'lucide-react'
 import { getFromStorage, setToStorage } from '../utils/helpers'
+import { haptic } from '../utils/capacitor'
 import { TUTORS } from '../constants'
 
 function Settings() {
@@ -66,6 +67,7 @@ function Settings() {
 
   // 이름 저장
   const handleSaveName = () => {
+    haptic.success()
     if (tempName.trim()) {
       setUserName(tempName.trim())
       setToStorage('userName', tempName.trim())
@@ -76,10 +78,17 @@ function Settings() {
 
   // 토글 핸들러
   const handleVideoReviewToggle = () => {
+    haptic.selection()
     const newValue = !videoReviewAlert
     setVideoReviewAlert(newValue)
     setToStorage('videoReviewAlert', newValue)
     displayToast(newValue ? '알림이 켜졌습니다' : '알림이 꺼졌습니다')
+  }
+
+  // 네비게이션 핸들러
+  const handleNav = (action) => {
+    haptic.light()
+    action()
   }
 
   return (
@@ -101,7 +110,7 @@ function Settings() {
       <nav className="tab-nav">
         <button
           className="tab-item"
-          onClick={() => navigate('/', { state: { activeTab: 'call' } })}
+          onClick={() => handleNav(() => navigate('/', { state: { activeTab: 'call' } }))}
         >
           전화
         </button>
@@ -112,7 +121,7 @@ function Settings() {
         </button>
         <button
           className="tab-item"
-          onClick={() => navigate('/', { state: { activeTab: 'history' } })}
+          onClick={() => handleNav(() => navigate('/', { state: { activeTab: 'history' } }))}
         >
           전화내역
         </button>
@@ -124,14 +133,14 @@ function Settings() {
         <section className="settings-section">
           <h2 className="section-label">공통 설정</h2>
           <div className="settings-list">
-            <div className="settings-item" onClick={() => navigate('/settings/schedule')}>
+            <div className="settings-item" onClick={() => handleNav(() => navigate('/settings/schedule'))}>
               <span className="item-label">일정</span>
               <div className="item-right">
                 <span className="item-value">주 {scheduleCount}회</span>
                 <ChevronRight size={20} color="#c0c0c0" />
               </div>
             </div>
-            <div className="settings-item" onClick={() => navigate('/settings/tutor')}>
+            <div className="settings-item" onClick={() => handleNav(() => navigate('/settings/tutor'))}>
               <span className="item-label">튜터</span>
               <div className="item-right">
                 <span className="item-value">{tutorName}</span>
@@ -140,10 +149,10 @@ function Settings() {
             </div>
             <div
               className="settings-item"
-              onClick={() => {
+              onClick={() => handleNav(() => {
                 setTempName(userName)
                 setShowNameModal(true)
-              }}
+              })}
             >
               <span className="item-label">내 이름</span>
               <div className="item-right">
@@ -158,7 +167,7 @@ function Settings() {
         <section className="settings-section">
           <h2 className="section-label">일반 전화</h2>
           <div className="settings-list">
-            <div className="settings-item" onClick={() => navigate('/settings/curriculum')}>
+            <div className="settings-item" onClick={() => handleNav(() => navigate('/settings/curriculum'))}>
               <span className="item-label">커리큘럼</span>
               <div className="item-right">
                 <span className="item-value">주제 {topicCount}개</span>
@@ -172,7 +181,7 @@ function Settings() {
         <section className="settings-section">
           <h2 className="section-label">그 외 전화</h2>
           <div className="settings-list">
-            <div className="settings-item" onClick={() => navigate('/settings/roleplay')}>
+            <div className="settings-item" onClick={() => handleNav(() => navigate('/settings/roleplay'))}>
               <span className="item-label">롤플레잉/디스커션 알림</span>
               <div className="item-right">
                 <ChevronRight size={20} color="#c0c0c0" />
@@ -188,27 +197,45 @@ function Settings() {
             </div>
           </div>
         </section>
+
+        {/* 알림 설정 섹션 */}
+        <section className="settings-section">
+          <h2 className="section-label">알림</h2>
+          <div className="settings-list">
+            <div className="settings-item" onClick={() => handleNav(() => navigate('/settings/notifications'))}>
+              <div className="item-left-with-icon">
+                <div className="item-icon-small">
+                  <Bell size={18} color="#6366f1" />
+                </div>
+                <span className="item-label">알림 설정</span>
+              </div>
+              <div className="item-right">
+                <ChevronRight size={20} color="#c0c0c0" />
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
       {/* 하단 네비게이션 바 */}
       <nav className="bottom-nav">
-        <button className="nav-item" onClick={() => navigate('/')}>
+        <button className="nav-item" onClick={() => handleNav(() => navigate('/'))}>
           <Home size={24} />
           <span>홈</span>
         </button>
-        <button className="nav-item">
+        <button className="nav-item" onClick={() => handleNav(() => alert('1:1 수업 기능은 준비 중입니다.'))}>
           <Monitor size={24} />
           <span>1:1 수업</span>
         </button>
-        <button className="nav-item">
+        <button className="nav-item" onClick={() => handleNav(() => navigate('/call'))}>
           <Bot size={24} />
           <span>AI 튜터</span>
         </button>
-        <button className="nav-item active">
+        <button className="nav-item active" onClick={() => handleNav(() => navigate('/'))}>
           <Phone size={24} />
           <span>AI 전화</span>
         </button>
-        <button className="nav-item">
+        <button className="nav-item" onClick={() => handleNav(() => navigate('/', { state: { activeTab: 'history' } }))}>
           <BarChart2 size={24} />
           <span>성취</span>
         </button>
@@ -369,6 +396,22 @@ function Settings() {
           display: flex;
           align-items: center;
           gap: 6px;
+        }
+
+        .item-left-with-icon {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .item-icon-small {
+          width: 32px;
+          height: 32px;
+          background: #f0f0ff;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         .item-value {

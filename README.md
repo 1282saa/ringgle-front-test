@@ -2,7 +2,7 @@
 
 AI-powered English conversation practice app with real-time voice interaction.
 
-**Last Updated**: 2026-01-12
+**Last Updated**: 2026-01-13
 **Development Method**: AI-Assisted Development (Claude Code)
 **Tech Stack**: React 19 + Vite 7 + Capacitor + AWS Lambda + Claude AI
 
@@ -38,6 +38,12 @@ Ringle AI English Learning MVP is a mobile-first application that enables users 
 - Filler word detection
 - Vocabulary analysis
 - Personalized improvement tips
+
+### Key Expression Practice
+- Step-by-step grammar correction practice
+- TTS playback of correct expressions
+- Voice recording & playback
+- S3 storage for practice recordings
 
 ---
 
@@ -109,7 +115,9 @@ eng-learning/
 │   ├── pages/
 │   │   ├── Home.jsx        # Main screen
 │   │   ├── Call.jsx        # Voice conversation
-│   │   ├── Result.jsx      # Analysis & feedback
+│   │   ├── Result.jsx      # Result screen
+│   │   ├── Analysis.jsx    # AI analysis & feedback
+│   │   ├── Practice.jsx    # Key expression practice
 │   │   └── Settings.jsx    # Tutor customization
 │   ├── utils/
 │   │   └── api.js          # API client
@@ -120,7 +128,7 @@ eng-learning/
 ├── android/                # Capacitor Android
 ├── ios/                    # Capacitor iOS
 ├── docs/
-│   └── phase/              # Development documentation
+│   └── phase/              # Development phases (1-11)
 └── package.json
 ```
 
@@ -157,6 +165,7 @@ eng-learning/
 | [Phase 8](docs/phase/PHASE-08-session-management.md) | Session Management | ✅ |
 | [Phase 9](docs/phase/PHASE-09-ux-ui-improvements.md) | UX/UI Improvements | ✅ |
 | [Phase 10](docs/phase/PHASE-10-call-tab-ui-refinement.md) | Call Tab UI Refinement | ✅ |
+| [Phase 11](docs/phase/PHASE-11-practice-feature.md) | Practice Feature | ✅ |
 
 ---
 

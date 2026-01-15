@@ -1,28 +1,28 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X, Star, CheckCircle, Loader } from 'lucide-react'
 import { analyzeConversation, textToSpeech, playAudioBase64 } from '../utils/api'
+import { formatDuration } from '../utils/helpers'
+import { useLocalStorage } from '../hooks'
+import { useUserSettings } from '../context'
+import { STORAGE_KEYS } from '../constants'
 
 function Result() {
   const navigate = useNavigate()
-  const [result, setResult] = useState(null)
   const [analysis, setAnalysis] = useState(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisRequested, setAnalysisRequested] = useState(false)
-  const [showFeedback, setShowFeedback] = useState(false) // 피드백 모달은 나중에 표시
+  const [showFeedback, setShowFeedback] = useState(false)
   const [rating, setRating] = useState(0)
   const [feedbackText, setFeedbackText] = useState('')
   const [showCorrections, setShowCorrections] = useState(false)
   const [currentCorrectionIndex, setCurrentCorrectionIndex] = useState(0)
-  const [toast, setToast] = useState(null) // 토스트 알림
+  const [toast, setToast] = useState(null)
 
-  useEffect(() => {
-    const saved = localStorage.getItem('lastCallResult')
-    if (saved) {
-      const data = JSON.parse(saved)
-      setResult(data)
-    }
-  }, [])
+  // 커스텀 훅으로 상태 관리
+  const [result] = useLocalStorage(STORAGE_KEYS.LAST_CALL_RESULT, null)
+  const [, setLastFeedback] = useLocalStorage(STORAGE_KEYS.LAST_FEEDBACK, null)
+  const { settings } = useUserSettings()
 
   const requestAnalysis = async () => {
     if (!result?.messages || result.messages.length === 0) return
@@ -68,32 +68,23 @@ function Result() {
     }
   }
 
-  const formatDuration = (seconds) => {
-    if (!seconds) return '0:00'
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-
   // 말한 단어 수 - 저장된 wordCount 우선 사용, 없으면 메시지에서 계산
   const wordCount = result?.wordCount || result?.messages
     ?.filter(m => m.speaker === 'user' || m.role === 'user')
     .reduce((acc, m) => acc + (m.content?.split(' ').filter(w => w.length > 0).length || 0), 0) || 0
 
   const submitFeedback = () => {
-    // 피드백 저장 (로컬스토리지 또는 API)
     const feedback = {
       rating,
       text: feedbackText,
       date: new Date().toISOString()
     }
-    localStorage.setItem('lastFeedback', JSON.stringify(feedback))
+    setLastFeedback(feedback)
     setShowFeedback(false)
   }
 
   const speakText = async (text) => {
     try {
-      const settings = JSON.parse(localStorage.getItem('tutorSettings') || '{}')
       const ttsResponse = await textToSpeech(text, settings)
       if (ttsResponse.audio) {
         await playAudioBase64(ttsResponse.audio)
@@ -118,8 +109,8 @@ function Result() {
 
   // AI 분석 요청 핸들러
   const handleAnalysisRequest = () => {
-    if (wordCount < 150) {
-      showToast('AI 분석을 받으려면 최소 150단어가 필요해요.')
+    if (wordCount < 30) {
+      showToast('AI 분석을 받으려면 최소 30단어가 필요해요.')
       return
     }
     requestAnalysis()

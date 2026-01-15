@@ -1,3 +1,6 @@
+/* Import common styles */
+@import './styles/variables.css';
+
 /* App Container */
 .app {
   min-height: 100vh;
