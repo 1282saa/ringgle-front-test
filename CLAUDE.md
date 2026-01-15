@@ -3,6 +3,8 @@
 ## 목표
 **플레이스토어 출시** - UI 다듬기 작업 진행 중
 
+전체 로드맵: ROADMAP.md 참고
+
 ## 기술 스택
 - React 19 + Vite 7
 - Capacitor (Android 앱)
