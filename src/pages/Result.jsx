@@ -128,8 +128,14 @@ function Result() {
 
       {/* Success Icon & Message */}
       <div className="success-section">
-        <div className="success-icon">
-          <CheckCircle size={48} color="white" />
+        <div className="success-icon-wrapper">
+          <div className="confetti-dot dot-1"></div>
+          <div className="confetti-dot dot-2"></div>
+          <div className="confetti-dot dot-3"></div>
+          <div className="confetti-dot dot-4"></div>
+          <div className="success-icon">
+            <CheckCircle size={48} color="white" />
+          </div>
         </div>
         <h1 className="success-title">대화를 완료했어요.</h1>
 
@@ -308,7 +314,7 @@ function Result() {
         .ringle-result {
           min-height: 100vh;
           background: white;
-          padding-bottom: 40px;
+          padding-bottom: 100px;
         }
 
         .close-btn {
@@ -323,8 +329,15 @@ function Result() {
 
         .success-section {
           background: white;
-          padding: 60px 20px 30px;
+          padding: 80px 20px 30px;
           text-align: center;
+        }
+
+        .success-icon-wrapper {
+          position: relative;
+          width: 100px;
+          height: 100px;
+          margin: 0 auto 20px;
         }
 
         .success-icon {
@@ -335,8 +348,46 @@ function Result() {
           display: flex;
           align-items: center;
           justify-content: center;
-          margin: 0 auto 20px;
-          box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+        }
+
+        .confetti-dot {
+          position: absolute;
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+        }
+
+        .dot-1 {
+          background: #f472b6;
+          top: 5px;
+          left: 10px;
+        }
+
+        .dot-2 {
+          background: #3b82f6;
+          bottom: 5px;
+          left: 20px;
+          width: 4px;
+          height: 12px;
+          border-radius: 2px;
+        }
+
+        .dot-3 {
+          background: #f97316;
+          top: 20px;
+          right: 10px;
+        }
+
+        .dot-4 {
+          background: #f472b6;
+          bottom: 20px;
+          right: 15px;
+          width: 6px;
+          height: 6px;
         }
 
         .success-title {
@@ -431,10 +482,16 @@ function Result() {
         }
 
         .action-buttons {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
           display: flex;
           gap: 12px;
-          padding: 0 20px;
-          margin-top: 20px;
+          padding: 16px 20px 32px;
+          background: white;
+          max-width: 500px;
+          margin: 0 auto;
         }
 
         .action-btn {

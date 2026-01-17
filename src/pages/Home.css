@@ -7,8 +7,8 @@
 .ringle-home {
   min-height: 100vh;
   background: #f9fafb;
-  /* Safe Area 적용: 하단 내비게이션 + Safe Area */
-  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  /* Safe Area 적용 */
+  padding-bottom: env(safe-area-inset-bottom, 20px);
 }
 
 /* Header */
@@ -17,27 +17,31 @@
   justify-content: space-between;
   align-items: center;
   /* Safe Area 적용: 상단 노치/다이나믹 아일랜드 */
-  padding: 16px 20px;
-  padding-top: calc(16px + env(safe-area-inset-top, 0px));
+  padding: 18px 20px;
+  padding-top: calc(18px + env(safe-area-inset-top, 0px));
   padding-left: calc(20px + env(safe-area-inset-left, 0px));
   padding-right: calc(20px + env(safe-area-inset-right, 0px));
   background: white;
 }
 
 .ringle-header h1 {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   color: #1f2937;
 }
 
 .header-icons {
   display: flex;
-  gap: 16px;
+  gap: 18px;
+  align-items: center;
 }
 
 .icon-btn {
   background: none;
   padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Tabs */
@@ -46,23 +50,23 @@
   background: white;
   border-bottom: 1px solid #e8e8e8;
   padding: 0 20px;
-  gap: 24px;
+  gap: 28px;
 }
 
 .tab {
-  padding: 14px 0;
-  font-size: 15px;
+  padding: 16px 0;
+  font-size: 16px;
   font-weight: 500;
-  color: #888;
+  color: #9ca3af;
   background: none;
   border-bottom: 2px solid transparent;
   transition: all 0.2s;
 }
 
 .tab.active {
-  color: #1a1a1a;
+  color: #1f2937;
   font-weight: 600;
-  border-bottom-color: #1a1a1a;
+  border-bottom-color: #1f2937;
 }
 
 /* Main Content */
@@ -75,7 +79,7 @@
   background: white;
   border: 1px solid #e5e7eb;
   border-radius: 16px;
-  padding: 40px 32px;
+  padding: 48px 32px 40px;
   text-align: center;
   margin-bottom: 16px;
   cursor: pointer;
@@ -89,22 +93,23 @@
 .tutor-avatar-wrapper {
   display: flex;
   justify-content: center;
-  margin-bottom: 20px;
+  margin-bottom: 28px;
 }
 
 .tutor-avatar {
-  width: 140px;
-  height: 140px;
+  width: 160px;
+  height: 160px;
   background: #8b5cf6;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 6px solid #ddd6fe;
+  border: 8px solid #e9e5fb;
+  box-shadow: 0 0 0 1px #d4d0f0;
 }
 
 .tutor-avatar span {
-  font-size: 56px;
+  font-size: 72px;
   font-weight: 600;
   color: white;
 }
@@ -113,57 +118,59 @@
   display: flex;
   justify-content: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .personality-tag {
-  padding: 6px 14px;
-  background: #f3f4f6;
+  padding: 8px 16px;
+  background: #f8f8f8;
   border-radius: 4px;
   font-size: 14px;
   color: #6b7280;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e8e8e8;
 }
 
 .tutor-name {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 700;
   color: #1f2937;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .tutor-info-tags {
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .info-tag {
-  font-size: 15px;
-  color: #6b7280;
+  font-size: 16px;
+  color: #9ca3af;
 }
 
 /* Call Button */
 .call-btn {
   width: 100%;
-  padding: 18px;
+  padding: 20px;
   background: #5046e4;
   color: white;
-  border-radius: 12px;
-  font-size: 17px;
+  border-radius: 14px;
+  font-size: 18px;
   font-weight: 600;
-  margin-top: 4px;
+  margin-top: 8px;
+  box-shadow: 0 4px 12px rgba(80, 70, 228, 0.3);
 }
 
 .call-btn:active {
   background: #4338ca;
+  transform: scale(0.98);
 }
 
 /* History Section */
 .history-section {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 /* Summary Card */
@@ -171,9 +178,17 @@
   background: white;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 20px;
+  padding: 16px 20px;
   display: flex;
   align-items: center;
+  margin-bottom: 4px;
+}
+
+.summary-divider-line {
+  width: calc(100% + 40px);
+  margin-left: -20px;
+  height: 8px;
+  background: #f3f4f6;
 }
 
 .summary-item {
@@ -183,10 +198,10 @@
 
 .summary-value {
   display: block;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
-  color: #5046e4;
-  margin-bottom: 4px;
+  color: #6366f1;
+  margin-bottom: 6px;
 }
 
 .summary-label {
@@ -196,13 +211,13 @@
 
 .summary-divider {
   width: 1px;
-  height: 40px;
+  height: 48px;
   background: #e5e7eb;
 }
 
 /* Notice Banner */
 .notice-banner {
-  background: #f3f4f6;
+  background: #f8f7ff;
   border-radius: 12px;
   padding: 16px;
   display: flex;
@@ -304,13 +319,7 @@
   background: white;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 20px;
-}
-
-.call-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  padding: 16px;
   margin-bottom: 12px;
 }
 
@@ -320,41 +329,21 @@
   background: #f3f4f6;
   border-radius: 4px;
   font-size: 12px;
-  color: #6b7280;
-}
-
-.tutor-badge {
-  padding: 4px 10px;
-  background: #ede9fe;
-  border-radius: 4px;
-  font-size: 12px;
-  color: #7c3aed;
   font-weight: 500;
-}
-
-.call-stats {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
-.call-duration,
-.call-turns {
-  font-size: 14px;
   color: #6b7280;
+  margin-bottom: 10px;
 }
 
 .call-date {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  color: #1f2937;
+  color: #374151;
   margin-bottom: 4px;
 }
 
 .call-words {
   font-size: 14px;
+  color: #6b7280;
   margin-bottom: 16px;
 }
 
@@ -374,33 +363,23 @@
 .call-buttons {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .call-btn-item {
   width: 100%;
-  padding: 14px;
+  padding: 16px;
   background: white;
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  font-size: 14px;
+  border-radius: 12px;
+  font-size: 15px;
   font-weight: 500;
-  color: #374151;
+  color: #1f2937;
   text-align: center;
 }
 
 .call-btn-item:active {
   background: #f9fafb;
-}
-
-.call-btn-item.primary {
-  background: #5046e4;
-  color: white;
-  border-color: #5046e4;
-}
-
-.call-btn-item.primary:active {
-  background: #4338ca;
 }
 
 /* Empty History */
@@ -431,59 +410,4 @@
 .empty-history .sub {
   font-size: 14px;
   color: #9ca3af;
-}
-
-/* Bottom Navigation */
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: white;
-  border-top: 1px solid #e5e7eb;
-  display: flex;
-  justify-content: space-around;
-  /* Safe Area 적용: 하단 홈바/내비게이션바 */
-  padding: 8px 0;
-  padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
-  max-width: 500px;
-  margin: 0 auto;
-  /* iOS에서 홈바 영역 터치 방지 */
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-.nav-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  /* 터치 타겟 크기 증가 (44x44 최소) */
-  padding: 8px 12px;
-  background: none;
-  color: #9ca3af;
-  min-width: 56px;
-  min-height: 48px;
-  /* 터치 피드백 */
-  -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
-  transition: color 0.2s, transform 0.1s;
-}
-
-.nav-item:active {
-  transform: scale(0.95);
-}
-
-.nav-item.active {
-  color: #1f2937;
-}
-
-.nav-item span {
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.nav-item svg {
-  stroke-width: 1.5;
 }

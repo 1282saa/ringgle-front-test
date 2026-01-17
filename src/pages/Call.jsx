@@ -421,7 +421,6 @@ function Call() {
   // AWS Transcribe Batch로 처리
   const processWithTranscribe = async (audioBlob) => {
     setIsProcessingSTT(true)
-    setInterimTranscript('음성 인식 중...')
 
     try {
       console.log('[STT] Sending audio to AWS Transcribe, size:', audioBlob.size)
@@ -906,38 +905,6 @@ function Call() {
           </div>
         )}
 
-        {/* Processing Indicator */}
-        {isProcessingSTT && (
-          <div className="processing-indicator">
-            <div className="spinner"></div>
-            <span>음성 인식 중...</span>
-          </div>
-        )}
-
-        {/* 사용자 음성 인식 중간 결과 */}
-        {isListening && interimTranscript && !isProcessingSTT && (
-          <div className="interim-transcript">
-            <p>{interimTranscript}</p>
-          </div>
-        )}
-
-        {/* User Speaking Indicator */}
-        {isListening && userSpeaking && !isProcessingSTT && (
-          <div className="user-speaking-indicator">
-            <div className="sound-waves">
-              <span></span><span></span><span></span><span></span><span></span>
-            </div>
-            <span>말씀하세요...</span>
-          </div>
-        )}
-
-        {/* Listening Indicator */}
-        {isListening && !userSpeaking && !interimTranscript && !isProcessingSTT && (
-          <div className="listening-indicator">
-            <div className="pulse-ring"></div>
-            <span>듣고 있습니다...</span>
-          </div>
-        )}
       </div>
 
       {/* Bottom Controls */}
@@ -1025,18 +992,18 @@ function Call() {
         }
 
         .tutor-avatar {
-          width: 100px;
-          height: 100px;
+          width: 72px;
+          height: 72px;
           background: #8b5cf6;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-bottom: 20px;
+          margin-bottom: 16px;
         }
 
         .tutor-avatar span {
-          font-size: 40px;
+          font-size: 28px;
           font-weight: 600;
           color: white;
         }

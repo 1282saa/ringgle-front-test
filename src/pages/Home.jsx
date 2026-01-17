@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Phone, ChevronLeft, ChevronRight, Menu, Flame, Home as HomeIcon, Monitor, Bot, BarChart2, User, Check } from 'lucide-react'
+import { Phone, ChevronLeft, ChevronRight, Menu, Flame, Check } from 'lucide-react'
 import { LoadingSpinner } from '../components'
 import { getSessions } from '../utils/api'
 import { getDeviceId, formatDuration } from '../utils/helpers'
@@ -206,6 +206,9 @@ function Home() {
               </div>
             </div>
 
+            {/* Divider Line */}
+            <div className="summary-divider-line" />
+
             {/* Notice Banner */}
             <div className="notice-banner">
               <div className="notice-icon">🚧</div>
@@ -239,50 +242,26 @@ function Home() {
               <span>AI 분석 있는 대화만 보기</span>
             </label>
 
-            {/* Loading State */}
-            {isLoadingSessions && (
-              <div className="loading-sessions">
-                <LoadingSpinner text="대화 내역 불러오는 중..." />
-              </div>
-            )}
-
-            {/* DB Sessions (우선 표시) */}
-            {!isLoadingSessions && filteredDbSessions.length > 0 && (
+            {/* DB Sessions */}
+            {filteredDbSessions.length > 0 && (
               <>
                 {filteredDbSessions.map((session) => {
                   const hasAnalysis = (session.wordCount || 0) >= 150
                   const words = session.wordCount || 0
                   return (
                     <div key={session.sessionId} className="call-card">
-                      <div className="call-card-header">
-                        <span className="call-type-tag">AI 전화</span>
-                        {session.tutorName && (
-                          <span className="tutor-badge">{session.tutorName}</span>
-                        )}
-                      </div>
+                      <span className="call-type-tag">전화</span>
                       <p className="call-date">{formatSessionDate(session.startedAt)}</p>
-                      <div className="call-stats">
-                        <p className="call-words">
-                          <span className={hasAnalysis ? 'word-count-ok' : 'word-count-low'}>
-                            {words}단어
-                          </span>
-                          <span className="word-threshold"> / 150단어</span>
-                        </p>
-                        {session.duration > 0 && (
-                          <p className="call-duration">
-                            <span>{formatDuration(session.duration)}</span>
-                          </p>
-                        )}
-                        {session.turnCount > 0 && (
-                          <p className="call-turns">
-                            <span>{session.turnCount}턴</span>
-                          </p>
-                        )}
-                      </div>
+                      <p className="call-words">
+                        <span className={hasAnalysis ? 'word-count-ok' : 'word-count-low'}>
+                          {words}단어
+                        </span>
+                        <span className="word-threshold"> / 150단어</span>
+                      </p>
 
                       <div className="call-buttons">
                         <button
-                          className="call-btn-item primary"
+                          className="call-btn-item"
                           onClick={() => handleNavClick(() => navigate('/script', {
                             state: {
                               sessionId: session.sessionId,
@@ -329,7 +308,7 @@ function Home() {
             )}
 
             {/* Empty State */}
-            {!isLoadingSessions && filteredDbSessions.length === 0 && (
+            {filteredDbSessions.length === 0 && (
               <div className="empty-history">
                 <div className="empty-icon">
                   <Phone size={32} color="#9ca3af" />
@@ -342,33 +321,6 @@ function Home() {
         )}
       </div>
 
-      {/* Bottom Navigation - 링글 6개 탭 */}
-      <nav className="bottom-nav">
-        <button className="nav-item" onClick={() => handleNavClick(() => setActiveTab('call'))}>
-          <HomeIcon size={22} />
-          <span>홈</span>
-        </button>
-        <button className="nav-item" onClick={() => handleNavClick(() => alert('1:1 수업 기능은 준비 중입니다.'))}>
-          <Monitor size={22} />
-          <span>1:1 수업</span>
-        </button>
-        <button className="nav-item" onClick={() => handleNavClick(() => navigate('/call'))}>
-          <Bot size={22} />
-          <span>AI 튜터</span>
-        </button>
-        <button className="nav-item active" onClick={() => handleNavClick(() => setActiveTab('call'))}>
-          <Phone size={22} />
-          <span>AI 전화</span>
-        </button>
-        <button className="nav-item" onClick={() => handleNavClick(() => setActiveTab('history'))}>
-          <BarChart2 size={22} />
-          <span>성취</span>
-        </button>
-        <button className="nav-item" onClick={() => handleNavClick(() => navigate('/settings'))}>
-          <User size={22} />
-          <span>마이링글</span>
-        </button>
-      </nav>
     </div>
   )
 }

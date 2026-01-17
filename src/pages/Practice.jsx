@@ -20,7 +20,7 @@ function Practice() {
   // location.state에서 corrections 데이터 받기
   const { corrections: passedCorrections, callData } = location.state || {}
 
-  const [step, setStep] = useState(1) // 1: 설명, 2: 따라말하기, 3: 완료
+  const [step, setStep] = useState(1) // 1: 설명, 2: 따라말하기, 3: 따라말하기 완료, 4: 대화하기, 5: 대화 완료, 6: 마무리
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -61,7 +61,14 @@ function Practice() {
   // 현재 연습할 표현
   const currentCorrection = corrections[currentIndex]
   const totalCount = corrections.length
-  const progress = totalCount > 0 ? ((currentIndex + 1) / totalCount) * 100 : 0
+
+  // 프로그레스: 따라말하기(step 2) = 50%, 대화하기(step 4) = 100%
+  const getProgress = () => {
+    if (step === 2 || step === 3) return 50
+    if (step === 4 || step === 5) return 100
+    return 0
+  }
+  const progress = getProgress()
 
   // 번역 가져오기
   useEffect(() => {
@@ -221,12 +228,22 @@ function Practice() {
     }
   }
 
-  // 다음 버튼 (Step 1 → Step 2)
+  // 다음 버튼 핸들러
   const handleNext = () => {
     if (step === 1) {
+      // 설명 → 따라말하기
       setStep(2)
     } else if (step === 2) {
-      // Step 2 완료 시 결과 저장
+      // 따라말하기 완료 → 잘했어요 바텀시트
+      setStep(3)
+    } else if (step === 3) {
+      // 잘했어요 → 대화하기
+      setUserTranscript('')
+      setUserRecording(null)
+      setUserRecordingUrl(null)
+      setStep(4)
+    } else if (step === 4) {
+      // 대화하기 완료 시 결과 저장
       const result = {
         index: currentIndex,
         original: currentCorrection.original,
@@ -236,22 +253,25 @@ function Practice() {
         timestamp: Date.now()
       }
       setPracticeResults(prev => [...prev, result])
-
-      // Step 3으로 이동
-      setStep(3)
-    } else if (step === 3) {
-      // 다음 표현으로
+      // 대화하기 완료 → 잘했어요 바텀시트 (최종)
+      setStep(5)
+    } else if (step === 5) {
+      // 대화 완료 잘했어요 → 마무리 or 다음 표현
       if (currentIndex < totalCount - 1) {
+        // 다음 표현으로
         setCurrentIndex(prev => prev + 1)
         setStep(1)
         setUserTranscript('')
         setUserRecording(null)
         setUserRecordingUrl(null)
       } else {
-        // 모든 연습 완료 - localStorage에 저장
-        savePracticeToHistory()
-        navigate('/', { state: { activeTab: 'history' } })
+        // 마지막 표현 완료 → 마무리 화면
+        setStep(6)
       }
+    } else if (step === 6) {
+      // 마무리 → 전화내역으로
+      savePracticeToHistory()
+      navigate('/', { state: { activeTab: 'history' } })
     }
   }
 
@@ -289,10 +309,13 @@ function Practice() {
     navigate(-1)
   }
 
-  // 뒤로가기 (Step 2 → Step 1)
+  // 뒤로가기
   const handleBack = () => {
     if (step === 2) {
       setStep(1)
+    } else if (step === 4) {
+      // 대화하기에서 뒤로 → 따라말하기 완료 상태로
+      setStep(3)
     } else {
       navigate(-1)
     }
@@ -442,25 +465,240 @@ function Practice() {
     )
   }
 
-  // Step 3: 완료
+  // Step 3: 따라말하기 완료 바텀시트
   if (step === 3) {
     return (
       <div style={styles.container}>
-        <div style={styles.completeContent}>
-          {/* Success Icon */}
-          <div style={styles.successIcon}>
-            <Check size={48} color="white" />
+        {/* Header with Back and Progress */}
+        <header style={styles.headerStep2}>
+          <button style={styles.backButton} onClick={handleBack}>
+            <ArrowLeft size={24} color="#374151" />
+          </button>
+          <div style={styles.progressBarContainer}>
+            <div style={styles.progressBar}>
+              <div style={{ ...styles.progressFill, width: `${progress}%` }} />
+            </div>
+          </div>
+        </header>
+
+        {/* Title */}
+        <h1 style={styles.title}>듣고 따라 말해보세요.</h1>
+
+        {/* Main Content - Keep showing the sentence */}
+        <div style={styles.content}>
+          <div style={styles.sentenceCard}>
+            <p style={styles.sentenceText}>{currentCorrection.corrected}</p>
+            <p style={styles.translationText}>{translation}</p>
+          </div>
+        </div>
+
+        {/* Bottom Sheet Overlay */}
+        <div style={styles.bottomSheetOverlay}>
+          <div className="bottom-sheet-animated" style={styles.bottomSheet}>
+            <div style={styles.bottomSheetHeader}>
+              <div style={styles.bottomSheetIcon}>
+                <Check size={18} color="white" />
+              </div>
+              <h2 style={styles.bottomSheetTitle}>잘했어요!</h2>
+            </div>
+            <p style={styles.bottomSheetSubtitle}>다음 학습 활동을 진행해보세요.</p>
+            <button style={styles.bottomSheetButton} onClick={handleNext}>
+              다음
+            </button>
+          </div>
+        </div>
+
+        <style>{`
+          @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+          }
+          .bottom-sheet-animated {
+            animation: slideUp 0.3s ease;
+          }
+        `}</style>
+      </div>
+    )
+  }
+
+  // Step 4: 대화하기 (빈칸 채우기)
+  if (step === 4) {
+    // 빈칸 채우기를 위해 문장에서 일부 단어를 빈칸으로 만들기
+    const createFillInBlank = (sentence) => {
+      const words = sentence.split(' ')
+      if (words.length <= 3) return { display: sentence, blanks: [] }
+
+      // 중간 부분 단어들을 빈칸으로 (2-3개)
+      const blankCount = Math.min(2, Math.floor(words.length / 3))
+      const startIdx = Math.floor(words.length / 3)
+      const blanks = words.slice(startIdx, startIdx + blankCount)
+
+      const displayWords = words.map((word, idx) => {
+        if (idx >= startIdx && idx < startIdx + blankCount) {
+          return '______'
+        }
+        return word
+      })
+
+      return { display: displayWords.join(' '), blanks }
+    }
+
+    const fillInBlank = createFillInBlank(currentCorrection.corrected)
+
+    return (
+      <div style={styles.container}>
+        {/* Header with Back and Progress */}
+        <header style={styles.headerStep2}>
+          <button style={styles.backButton} onClick={handleBack}>
+            <ArrowLeft size={24} color="#374151" />
+          </button>
+          <div style={styles.progressBarContainer}>
+            <div style={styles.progressBar}>
+              <div style={{ ...styles.progressFill, width: `${progress}%` }} />
+            </div>
+          </div>
+        </header>
+
+        {/* Title */}
+        <h1 style={styles.title}>이 표현으로 대화해 보세요.</h1>
+
+        {/* Main Content */}
+        <div style={styles.content}>
+          {/* Question Card - 상단 회색 카드 */}
+          <div style={styles.questionCard}>
+            <p style={styles.questionText}>{currentCorrection.corrected}</p>
+            <p style={styles.questionTranslation}>{translation}</p>
+            <button
+              style={styles.playButton}
+              onClick={handleListenSentence}
+              disabled={isPlaying}
+            >
+              <Volume2 size={18} color="#6b7280" />
+            </button>
           </div>
 
-          <h1 style={styles.completeTitle}>잘했어요!</h1>
+          {/* Fill in the Blank Card - 하단 흰색 카드 */}
+          <div style={styles.blankCard}>
+            <p style={styles.blankText}>{fillInBlank.display}</p>
+            <p style={styles.blankTranslation}>{translation}</p>
+            <div style={styles.blankDivider} />
+            <button style={styles.eyeButton}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+
+          {/* User Transcript Display */}
+          {userTranscript && (
+            <div style={styles.transcriptBox}>
+              <p style={styles.transcriptText}>{userTranscript}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Mic Button */}
+        <div style={styles.micArea}>
+          <button
+            style={{
+              ...styles.micButton,
+              background: isRecording ? '#ef4444' : '#5046e4'
+            }}
+            onClick={handleMicToggle}
+          >
+            <Mic size={28} color="white" />
+          </button>
+          {isRecording && (
+            <p style={styles.recordingText}>듣고 있어요...</p>
+          )}
+        </div>
+
+        {/* Bottom Button (shows after recording) */}
+        {userTranscript && (
+          <div style={styles.bottomArea}>
+            <button style={styles.primaryButton} onClick={handleNext}>
+              다음
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Step 5: 대화하기 완료 바텀시트
+  if (step === 5) {
+    return (
+      <div style={styles.container}>
+        {/* Header with Back and Progress */}
+        <header style={styles.headerStep2}>
+          <button style={styles.backButton} onClick={handleBack}>
+            <ArrowLeft size={24} color="#374151" />
+          </button>
+          <div style={styles.progressBarContainer}>
+            <div style={styles.progressBar}>
+              <div style={{ ...styles.progressFill, width: `${progress}%` }} />
+            </div>
+          </div>
+        </header>
+
+        {/* Title */}
+        <h1 style={styles.title}>이 표현으로 대화해 보세요.</h1>
+
+        {/* Main Content */}
+        <div style={styles.content}>
+          <div style={styles.sentenceCard}>
+            <p style={styles.sentenceText}>{currentCorrection.corrected}</p>
+            <p style={styles.translationText}>{translation}</p>
+          </div>
+        </div>
+
+        {/* Bottom Sheet Overlay */}
+        <div style={styles.bottomSheetOverlay}>
+          <div className="bottom-sheet-animated" style={styles.bottomSheet}>
+            <div style={styles.bottomSheetHeader}>
+              <div style={styles.bottomSheetIcon}>
+                <Check size={18} color="white" />
+              </div>
+              <h2 style={styles.bottomSheetTitle}>잘했어요!</h2>
+            </div>
+            <p style={styles.bottomSheetSubtitle}>전화 후 표현학습을 완료했어요!</p>
+            <button style={styles.bottomSheetButton} onClick={handleNext}>
+              다음
+            </button>
+          </div>
+        </div>
+
+        <style>{`
+          @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+          }
+          .bottom-sheet-animated {
+            animation: slideUp 0.3s ease;
+          }
+        `}</style>
+      </div>
+    )
+  }
+
+  // Step 6: 마무리까지 완벽해요!
+  if (step === 6) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.completeContent}>
+          {/* Celebration Icon */}
+          <div style={styles.celebrationIcon}>
+            <span style={styles.celebrationEmoji}>🎉</span>
+          </div>
+
+          <h1 style={styles.completeTitle}>마무리까지 완벽해요!</h1>
           <p style={styles.completeSubtitle}>
-            {currentIndex < totalCount - 1
-              ? '다음 학습 활동을 진행해보세요.'
-              : '모든 표현 연습을 완료했습니다.'}
+            모든 핵심 표현 연습을 완료했습니다.
           </p>
 
           <button style={styles.primaryButtonLarge} onClick={handleNext}>
-            {currentIndex < totalCount - 1 ? '다음' : '완료'}
+            확인
           </button>
         </div>
       </div>
@@ -558,14 +796,76 @@ const styles = {
 
   // Explanation Box
   explanationBox: {
-    background: '#eff6ff',
+    background: '#f9fafb',
+    border: '1px solid #e5e7eb',
     borderRadius: '16px',
     padding: '20px 24px',
   },
   explanationText: {
     fontSize: '15px',
-    color: '#374151',
+    color: '#6b7280',
     lineHeight: '1.7',
+  },
+
+  // Question Card (Step 4 상단)
+  questionCard: {
+    background: '#f3f4f6',
+    borderRadius: '16px',
+    padding: '24px',
+    marginBottom: '16px',
+    position: 'relative',
+  },
+  questionText: {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: '#1f2937',
+    lineHeight: '1.5',
+    marginBottom: '12px',
+  },
+  questionTranslation: {
+    fontSize: '14px',
+    color: '#6b7280',
+    lineHeight: '1.5',
+    marginBottom: '16px',
+  },
+  playButton: {
+    background: 'none',
+    border: 'none',
+    padding: '4px',
+    cursor: 'pointer',
+  },
+
+  // Blank Card (Step 4 하단)
+  blankCard: {
+    background: 'white',
+    border: '1px solid #e5e7eb',
+    borderRadius: '16px',
+    padding: '24px',
+    marginBottom: '20px',
+  },
+  blankText: {
+    fontSize: '18px',
+    fontWeight: '500',
+    color: '#1f2937',
+    lineHeight: '1.6',
+    marginBottom: '12px',
+  },
+  blankTranslation: {
+    fontSize: '14px',
+    color: '#6b7280',
+    lineHeight: '1.5',
+    marginBottom: '16px',
+  },
+  blankDivider: {
+    height: '1px',
+    background: '#e5e7eb',
+    marginBottom: '12px',
+  },
+  eyeButton: {
+    background: 'none',
+    border: 'none',
+    padding: '4px',
+    cursor: 'pointer',
   },
 
   // Action Buttons (Step 2)
@@ -672,7 +972,66 @@ const styles = {
     color: '#6b7280',
   },
 
-  // Complete Screen
+  // Bottom Sheet (for success feedback) - 흰색 배경
+  bottomSheetOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0, 0, 0, 0.3)',
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  bottomSheet: {
+    background: 'white',
+    borderRadius: '24px 24px 0 0',
+    width: '100%',
+    maxWidth: '480px',
+    padding: '32px 24px 40px',
+    textAlign: 'left',
+  },
+  bottomSheetHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '8px',
+  },
+  bottomSheetIcon: {
+    width: '32px',
+    height: '32px',
+    background: '#8b5cf6',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomSheetTitle: {
+    fontSize: '20px',
+    fontWeight: '700',
+    color: '#8b5cf6',
+  },
+  bottomSheetSubtitle: {
+    fontSize: '15px',
+    color: '#6b7280',
+    marginBottom: '24px',
+    marginLeft: '44px',
+  },
+  bottomSheetButton: {
+    width: '100%',
+    padding: '18px',
+    background: '#5046e4',
+    color: 'white',
+    border: 'none',
+    borderRadius: '12px',
+    fontSize: '17px',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+
+  // Complete Screen (Final)
   completeContent: {
     flex: 1,
     display: 'flex',
@@ -682,25 +1041,29 @@ const styles = {
     padding: '40px 20px',
     textAlign: 'center',
   },
-  successIcon: {
-    width: '80px',
-    height: '80px',
-    background: '#22c55e',
+  celebrationIcon: {
+    width: '100px',
+    height: '100px',
+    background: '#f0f9ff',
     borderRadius: '50%',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: '24px',
   },
+  celebrationEmoji: {
+    fontSize: '48px',
+  },
   completeTitle: {
-    fontSize: '24px',
+    fontSize: '26px',
     fontWeight: '700',
     color: '#1f2937',
-    marginBottom: '8px',
+    marginBottom: '12px',
   },
   completeSubtitle: {
     fontSize: '16px',
     color: '#6b7280',
+    lineHeight: '1.5',
   },
 }
 

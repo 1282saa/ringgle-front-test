@@ -229,9 +229,9 @@ function TutorSettings() {
         }
 
         .section-title {
-          font-size: 13px;
-          font-weight: 600;
-          color: #666;
+          font-size: 15px;
+          font-weight: 700;
+          color: #1a1a1a;
           margin-bottom: 12px;
           padding: 0 20px;
           letter-spacing: -0.2px;
@@ -247,10 +247,11 @@ function TutorSettings() {
         /* 튜터 캐러셀 */
         .tutor-carousel {
           display: flex;
-          gap: 16px;
+          gap: 12px;
           overflow-x: auto;
           scroll-snap-type: x mandatory;
-          padding: 0 20px;
+          padding: 8px 20px;
+          margin: 0 20px;
           -webkit-overflow-scrolling: touch;
           scrollbar-width: none;
         }
@@ -261,17 +262,15 @@ function TutorSettings() {
 
         .tutor-card {
           flex-shrink: 0;
-          width: 260px;
+          width: 280px;
           background: white;
-          border-radius: 16px;
-          padding: 24px 20px;
+          border-radius: 12px;
+          padding: 12px 16px;
           scroll-snap-align: start;
           border: 2px solid transparent;
           transition: all 0.2s;
           cursor: pointer;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
+          text-align: left;
         }
 
         .tutor-card.selected {
@@ -280,20 +279,26 @@ function TutorSettings() {
         }
 
         .tutor-meta {
-          font-size: 13px;
-          color: #888;
+          font-size: 12px;
+          color: #999;
+          margin-bottom: 2px;
+          text-align: left;
+          display: block;
         }
 
         .tutor-name {
-          font-size: 20px;
+          font-size: 16px;
           font-weight: 700;
           color: #1a1a1a;
+          margin-bottom: 2px;
+          text-align: left;
         }
 
         .tutor-tags {
-          font-size: 13px;
-          color: #888;
-          margin-top: 4px;
+          font-size: 12px;
+          color: #999;
+          text-align: left;
+          display: block;
         }
 
         .carousel-dots {
@@ -321,20 +326,21 @@ function TutorSettings() {
         /* 옵션 그룹 */
         .option-group {
           display: flex;
+          flex-wrap: wrap;
           gap: 10px;
           padding: 0 20px;
         }
 
         .option-btn {
-          flex: 1;
-          padding: 14px 20px;
+          padding: 10px 20px;
           background: white;
           border: 1.5px solid #e0e0e0;
-          border-radius: 12px;
-          font-size: 15px;
+          border-radius: 8px;
+          font-size: 14px;
           font-weight: 500;
           color: #666;
           transition: all 0.2s;
+          white-space: nowrap;
         }
 
         .option-btn.selected {
